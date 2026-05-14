@@ -1,0 +1,99 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TicketStatus {
+  new
+  ai_generated
+  pending_review
+  approved_sent
+  edited_sent
+  discarded
+  manual
+  send_failed
+}
+
+enum AuditEventType {
+  ticket_ingested
+  ticket_updated
+  approved_sent
+  edited_sent
+  discarded
+  manual
+  send_failed
+  login
+  logout
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique
+  name            String
+  passwordHash    String
+  createdAt       DateTime     @default(now())
+  lastLoginAt     DateTime?
+  sessions        Session[]
+  auditEvents     AuditEvent[]
+  approvedTickets Ticket[]     @relation("TicketApprovedBy")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Ticket {
+  id                    String       @id @default(cuid())
+  externalMessageId     String       @unique
+  customerEmail         String
+  customerName          String?
+  subject               String
+  receivedAt            DateTime
+  source                String       @default("webmail")
+  originalText          String
+  aiReply               String
+  finalReply            String?
+  category              String?
+  intent                String?
+  riskFlags             String?
+  escalationRecommended Boolean      @default(false)
+  status                TicketStatus @default(pending_review)
+  approvedByUserId      String?
+  sentAt                DateTime?
+  providerMessageId     String?
+  sendError             String?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+
+  approvedBy User?        @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
+  auditEvents AuditEvent[]
+
+  @@index([status, receivedAt])
+  @@index([customerEmail])
+}
+
+model AuditEvent {
+  id           String          @id @default(cuid())
+  ticketId     String?
+  userId       String?
+  eventType    AuditEventType
+  beforeStatus TicketStatus?
+  afterStatus  TicketStatus?
+  metadataJson Json?
+  createdAt    DateTime        @default(now())
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([ticketId, createdAt])
+  @@index([userId, createdAt])
+}
