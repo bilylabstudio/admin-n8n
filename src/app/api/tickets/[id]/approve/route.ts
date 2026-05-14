@@ -18,7 +18,8 @@ export async function POST(_request: Request, { params }: { params: { id: string
     subject: ticket.subject,
     final_reply: ticket.aiReply,
     approved_by: user.email,
-    approval_action: 'approved'
+    approval_action: 'approved',
+    in_reply_to_message_id: ticket.externalMessageId ?? undefined,
   });
 
   if (!result.ok) {

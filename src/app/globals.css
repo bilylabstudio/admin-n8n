@@ -719,6 +719,222 @@ button {
   gap: 16px;
 }
 
+/* ── View mode toggle ───────────────────────────────────── */
+.list-toolbar .search-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.view-toggle-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  padding: 5px 9px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.view-toggle-btn.active {
+  background: var(--surface-inset);
+  border-color: var(--gummy-teal);
+  color: var(--gummy-teal);
+}
+
+/* ── Pending badge on customer row ──────────────────────── */
+.pending-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  border-radius: 999px;
+  padding: 2px 6px;
+  background: var(--review-amber-bg);
+  color: var(--review-amber);
+  font-size: 11px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+/* ── Copy button ─────────────────────────────────────────── */
+.copy-btn {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink-muted);
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: color 0.12s, border-color 0.12s;
+}
+
+.copy-btn:hover {
+  border-color: var(--gummy-teal);
+  color: var(--gummy-teal);
+}
+
+/* ── Message block header (with copy button) ─────────────── */
+.message-block-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 9px;
+}
+
+.message-block-header h3 {
+  margin: 0;
+}
+
+/* ── Conversation pane ───────────────────────────────────── */
+.conv-pane {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.conv-email {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.conv-thread {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px 0 16px;
+}
+
+.thread-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.thread-bubble {
+  border-radius: var(--radius-md);
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+}
+
+.bubble-client {
+  background: var(--surface-inset);
+}
+
+.bubble-admin {
+  background: #fbfaf5;
+  border-color: rgba(99, 178, 183, 0.22);
+}
+
+.bubble-admin.pending {
+  background: #fffef8;
+  border-color: rgba(125, 95, 0, 0.18);
+}
+
+.bubble-admin.editing {
+  background: var(--surface-raised);
+  border-color: var(--gummy-teal);
+}
+
+.bubble-admin.sent {
+  background: rgba(99, 178, 183, 0.06);
+  border-color: rgba(99, 178, 183, 0.28);
+}
+
+.bubble-discarded {
+  background: var(--muted-bg);
+  border-color: var(--line);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.bubble-who {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bubble-subject {
+  margin: 0 0 5px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bubble-text {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.bubble-text.muted {
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.bubble-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.bubble-tags em {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: var(--muted-bg);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.conv-editor {
+  display: grid;
+  gap: 9px;
+  margin-top: 8px;
+}
+
+.conv-editor textarea {
+  width: 100%;
+  min-height: 110px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  padding: 10px 11px;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+  font: inherit;
+}
+
+.conv-editor textarea:focus {
+  border-color: rgba(99, 178, 183, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 178, 183, 0.15);
+}
+
 @media (max-width: 980px) {
   .inbox-layout {
     grid-template-columns: 160px minmax(260px, 340px) minmax(420px, 1fr);

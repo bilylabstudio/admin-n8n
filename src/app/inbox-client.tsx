@@ -46,9 +46,20 @@ type InboxResponse = {
   error?: string;
 };
 
+type CustomerEntry = {
+  email: string;
+  name: string | null;
+  pendingCount: number;
+  lastAt: string;
+  lastText: string;
+};
+
 type LoadReason = 'initial' | 'poll' | 'manual' | 'action';
+type ViewMode = 'tickets' | 'conversations';
+type SubmitAction = 'send-edited' | 'approve' | 'manual' | 'discard';
 
 const POLL_MS = 7000;
+const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
 
 export function InboxClient({ userEmail }: { userEmail: string }) {
   const [activeGroup, setActiveGroup] = useState<InboxGroup>('pending_review');
@@ -65,10 +76,39 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [submitting, setSubmitting] = useState<string | null>(null);
   const knownIds = useRef<Set<string>>(new Set());
 
+  const [viewMode, setViewMode] = useState<ViewMode>('tickets');
+  const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string | null>(null);
+  const [conversationTickets, setConversationTickets] = useState<Ticket[]>([]);
+  const [conversationLoading, setConversationLoading] = useState(false);
+
   const selectedTicket = useMemo(
-    () => tickets.find((ticket) => ticket.id === selectedId) || tickets[0] || null,
+    () => tickets.find((t) => t.id === selectedId) || tickets[0] || null,
     [selectedId, tickets]
   );
+
+  const customers = useMemo<CustomerEntry[]>(() => {
+    const map = new Map<string, CustomerEntry>();
+    for (const t of tickets) {
+      const isPending = REVIEWABLE.includes(t.status);
+      const existing = map.get(t.customerEmail);
+      if (!existing) {
+        map.set(t.customerEmail, {
+          email: t.customerEmail,
+          name: t.customerName,
+          pendingCount: isPending ? 1 : 0,
+          lastAt: t.receivedAt,
+          lastText: t.originalText
+        });
+      } else {
+        if (isPending) existing.pendingCount++;
+        if (t.receivedAt > existing.lastAt) {
+          existing.lastAt = t.receivedAt;
+          existing.lastText = t.originalText;
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+  }, [tickets]);
 
   const loadTickets = useCallback(
     async (reason: LoadReason = 'manual') => {
@@ -79,18 +119,16 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         if (reason === 'initial') setLoading(true);
         setError('');
 
-        const response = await fetch(`/api/tickets?${params.toString()}`, {
-          cache: 'no-store'
-        });
+        const response = await fetch(`/api/tickets?${params.toString()}`, { cache: 'no-store' });
         const data = (await response.json()) as InboxResponse;
         if (!response.ok || !data.ok) {
           throw new Error(data.error || 'No se pudo actualizar la bandeja.');
         }
 
         const previousIds = knownIds.current;
-        const incomingIds = new Set(data.tickets.map((ticket) => ticket.id));
+        const incomingIds = new Set(data.tickets.map((t) => t.id));
         const hasNewTickets =
-          previousIds.size > 0 && data.tickets.some((ticket) => !previousIds.has(ticket.id));
+          previousIds.size > 0 && data.tickets.some((t) => !previousIds.has(t.id));
 
         knownIds.current = incomingIds;
         setTickets(data.tickets);
@@ -102,9 +140,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           return data.selectedTicketId;
         });
 
-        if (hasNewTickets && reason === 'poll') {
-          setNotice('Nuevo correo recibido');
-        }
+        if (hasNewTickets && reason === 'poll') setNotice('Nuevo correo recibido');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'No se pudo actualizar la bandeja.');
       } finally {
@@ -114,6 +150,30 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     [activeGroup, query]
   );
 
+  const loadConversation = useCallback(async (email: string) => {
+    setSelectedCustomerEmail(email);
+    setConversationLoading(true);
+    try {
+      const res = await fetch(`/api/customers/${encodeURIComponent(email)}/tickets`, {
+        cache: 'no-store'
+      });
+      const data = (await res.json()) as { ok: boolean; tickets: Ticket[] };
+      if (data.ok) {
+        setConversationTickets(data.tickets);
+        const firstPending = data.tickets.find((t) => REVIEWABLE.includes(t.status));
+        if (firstPending) {
+          setSelectedId(firstPending.id);
+          setDraft(firstPending.finalReply || firstPending.aiReply || '');
+          setDirty(false);
+        }
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setConversationLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     knownIds.current = new Set();
     setSelectedId(null);
@@ -122,16 +182,14 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   }, [loadTickets]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      void loadTickets('poll');
-    }, POLL_MS);
+    const timer = window.setInterval(() => void loadTickets('poll'), POLL_MS);
     return () => window.clearInterval(timer);
   }, [loadTickets]);
 
   useEffect(() => {
-    if (!selectedTicket || dirty) return;
+    if (!selectedTicket || dirty || viewMode === 'conversations') return;
     setDraft(selectedTicket.finalReply || selectedTicket.aiReply || '');
-  }, [dirty, selectedTicket]);
+  }, [dirty, selectedTicket, viewMode]);
 
   const selectTicket = (ticket: Ticket) => {
     setSelectedId(ticket.id);
@@ -140,12 +198,16 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setNotice('');
   };
 
-  const updateQuery = (value: string) => {
-    setQuery(value);
+  const switchViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    setSelectedCustomerEmail(null);
+    setConversationTickets([]);
+    setNotice('');
   };
 
-  const submitAction = async (action: 'send-edited' | 'approve' | 'manual' | 'discard') => {
-    if (!selectedTicket) return;
+  const submitAction = async (action: SubmitAction, ticketId?: string) => {
+    const id = ticketId ?? selectedTicket?.id;
+    if (!id) return;
     setSubmitting(action);
     setError('');
 
@@ -156,14 +218,17 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         init.body = new URLSearchParams({ final_reply: draft });
       }
 
-      const response = await fetch(`/api/tickets/${selectedTicket.id}/${action}`, init);
-      if (!response.ok) {
-        throw new Error('No se pudo completar la accion.');
-      }
+      const response = await fetch(`/api/tickets/${id}/${action}`, init);
+      if (!response.ok) throw new Error('No se pudo completar la accion.');
 
       setDirty(false);
       setNotice(action === 'send-edited' ? 'Respuesta enviada' : 'Ticket actualizado');
-      await loadTickets('action');
+
+      if (viewMode === 'conversations' && selectedCustomerEmail) {
+        await Promise.all([loadConversation(selectedCustomerEmail), loadTickets('action')]);
+      } else {
+        await loadTickets('action');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo completar la accion.');
     } finally {
@@ -220,10 +285,28 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
               <span>Buscar cliente</span>
               <input
                 value={query}
-                onChange={(event) => updateQuery(event.target.value)}
+                onChange={(e) => setQuery(e.target.value)}
                 placeholder="Email, cliente o asunto"
               />
             </label>
+            <div className="view-toggle">
+              <button
+                className={viewMode === 'tickets' ? 'view-toggle-btn active' : 'view-toggle-btn'}
+                type="button"
+                onClick={() => switchViewMode('tickets')}
+                title="Lista de tickets"
+              >
+                ☰
+              </button>
+              <button
+                className={viewMode === 'conversations' ? 'view-toggle-btn active' : 'view-toggle-btn'}
+                type="button"
+                onClick={() => switchViewMode('conversations')}
+                title="Ver conversaciones"
+              >
+                💬
+              </button>
+            </div>
             {notice ? <p className="live-notice">{notice}</p> : null}
           </div>
 
@@ -238,48 +321,298 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
           <div className="ticket-list" aria-live="polite">
             {loading ? <div className="empty-state">Cargando correos...</div> : null}
-            {!loading && !tickets.length ? (
-              <div className="empty-state">No hay correos en este estado.</div>
-            ) : null}
-            {tickets.map((ticket) => (
-              <button
-                className={ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'}
-                key={ticket.id}
-                type="button"
-                onClick={() => selectTicket(ticket)}
-              >
-                <span className="row-main">
-                  <strong>{ticket.customerName || ticket.customerEmail}</strong>
-                  <small>{ticket.subject}</small>
-                </span>
-                <span className="row-meta">
-                  <StatusBadge status={ticket.status} />
-                  <time>{formatDate(ticket.receivedAt)}</time>
-                </span>
-                <span className="row-preview">{preview(ticket.originalText)}</span>
-                <span className="row-tags">
-                  {ticket.category ? <em>{ticket.category}</em> : null}
-                  {ticket.intent ? <em>{ticket.intent}</em> : null}
-                  {ticket.escalationRecommended || ticket.riskFlags ? <b>Revisar riesgo</b> : null}
-                </span>
-              </button>
-            ))}
+
+            {viewMode === 'tickets' ? (
+              <>
+                {!loading && !tickets.length ? (
+                  <div className="empty-state">No hay correos en este estado.</div>
+                ) : null}
+                {tickets.map((ticket) => (
+                  <button
+                    className={
+                      ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
+                    }
+                    key={ticket.id}
+                    type="button"
+                    onClick={() => selectTicket(ticket)}
+                  >
+                    <span className="row-main">
+                      <strong>{ticket.customerName || ticket.customerEmail}</strong>
+                      <small>{ticket.subject}</small>
+                    </span>
+                    <span className="row-meta">
+                      <StatusBadge status={ticket.status} />
+                      <time>{formatDate(ticket.receivedAt)}</time>
+                    </span>
+                    <span className="row-preview">{preview(ticket.originalText)}</span>
+                    <span className="row-tags">
+                      {ticket.category ? <em>{ticket.category}</em> : null}
+                      {ticket.intent ? <em>{ticket.intent}</em> : null}
+                      {ticket.escalationRecommended || ticket.riskFlags ? (
+                        <b>Revisar riesgo</b>
+                      ) : null}
+                    </span>
+                  </button>
+                ))}
+              </>
+            ) : (
+              <>
+                {!loading && !customers.length ? (
+                  <div className="empty-state">No hay clientes en este estado.</div>
+                ) : null}
+                {customers.map((customer) => (
+                  <button
+                    className={
+                      customer.email === selectedCustomerEmail
+                        ? 'ticket-row selected'
+                        : 'ticket-row'
+                    }
+                    key={customer.email}
+                    type="button"
+                    onClick={() => loadConversation(customer.email)}
+                  >
+                    <span className="row-main">
+                      <strong>{customer.name || customer.email}</strong>
+                      {customer.pendingCount > 0 ? (
+                        <span className="pending-badge">{customer.pendingCount}</span>
+                      ) : null}
+                    </span>
+                    <span className="row-meta">
+                      <time>{formatDate(customer.lastAt)}</time>
+                    </span>
+                    <span className="row-preview">{preview(customer.lastText)}</span>
+                  </button>
+                ))}
+              </>
+            )}
           </div>
         </section>
 
-        <ReviewPane
-          draft={draft}
-          dirty={dirty}
-          onDraftChange={(value) => {
-            setDraft(value);
-            setDirty(true);
-          }}
-          onSubmit={submitAction}
-          submitting={submitting}
-          ticket={selectedTicket}
-        />
+        {viewMode === 'conversations' ? (
+          <ConversationPane
+            customerEmail={selectedCustomerEmail}
+            tickets={conversationTickets}
+            loading={conversationLoading}
+            draft={draft}
+            dirty={dirty}
+            selectedId={selectedId}
+            onDraftChange={(value) => {
+              setDraft(value);
+              setDirty(true);
+            }}
+            onSelectTicket={(id, defaultDraft) => {
+              setSelectedId(id);
+              setDraft(defaultDraft);
+              setDirty(false);
+            }}
+            onSubmit={submitAction}
+            submitting={submitting}
+          />
+        ) : (
+          <ReviewPane
+            draft={draft}
+            dirty={dirty}
+            onDraftChange={(value) => {
+              setDraft(value);
+              setDirty(true);
+            }}
+            onSubmit={submitAction}
+            submitting={submitting}
+            ticket={selectedTicket}
+          />
+        )}
       </section>
     </main>
+  );
+}
+
+function ConversationPane({
+  customerEmail,
+  tickets,
+  loading,
+  draft,
+  dirty,
+  selectedId,
+  onDraftChange,
+  onSelectTicket,
+  onSubmit,
+  submitting
+}: {
+  customerEmail: string | null;
+  tickets: Ticket[];
+  loading: boolean;
+  draft: string;
+  dirty: boolean;
+  selectedId: string | null;
+  onDraftChange: (value: string) => void;
+  onSelectTicket: (id: string, defaultDraft: string) => void;
+  onSubmit: (action: SubmitAction, ticketId?: string) => void;
+  submitting: string | null;
+}) {
+  if (!customerEmail) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Selecciona un cliente para ver la conversación.</div>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Cargando conversación...</div>
+      </section>
+    );
+  }
+
+  if (!tickets.length) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Sin mensajes para este cliente.</div>
+      </section>
+    );
+  }
+
+  const customerName = tickets[0]?.customerName || customerEmail;
+
+  return (
+    <section className="review-pane conv-pane">
+      <div className="review-header">
+        <div>
+          <p className="eyebrow">Conversación completa</p>
+          <h2>{customerName}</h2>
+          <p className="conv-email">{customerEmail}</p>
+        </div>
+      </div>
+
+      <div className="conv-thread">
+        {tickets.map((ticket) => {
+          const isPending = REVIEWABLE.includes(ticket.status);
+          const isSent = ['approved_sent', 'edited_sent'].includes(ticket.status);
+          const isDiscarded = ticket.status === 'discarded';
+          const isManual = ticket.status === 'manual';
+          const isSelectedForEdit = ticket.id === selectedId;
+
+          const adminText = isSent
+            ? (ticket.finalReply || ticket.aiReply || '')
+            : (ticket.aiReply || '');
+
+          return (
+            <div className="thread-turn" key={ticket.id}>
+              {/* Client message */}
+              <div className="thread-bubble bubble-client">
+                <div className="bubble-header">
+                  <span className="bubble-who">👤 {formatDate(ticket.receivedAt)}</span>
+                  <CopyButton text={ticket.originalText} />
+                </div>
+                {ticket.subject && ticket.subject !== '(sin asunto)' ? (
+                  <p className="bubble-subject">{ticket.subject}</p>
+                ) : null}
+                <p className="bubble-text">{ticket.originalText}</p>
+                {ticket.category || ticket.intent ? (
+                  <div className="bubble-tags">
+                    {ticket.category ? <em>{ticket.category}</em> : null}
+                    {ticket.intent ? <em>{ticket.intent}</em> : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Admin response */}
+              {isDiscarded || isManual ? (
+                <div className="thread-bubble bubble-discarded">
+                  <span>{isDiscarded ? 'Ticket descartado' : 'Gestionado manualmente'}</span>
+                </div>
+              ) : isPending ? (
+                <div
+                  className={`thread-bubble bubble-admin ${isSelectedForEdit ? 'editing' : 'pending'}`}
+                >
+                  <div className="bubble-header">
+                    <span className="bubble-who">
+                      🤖 Susana · <StatusBadge status={ticket.status} />
+                    </span>
+                    {ticket.aiReply ? <CopyButton text={ticket.aiReply} /> : null}
+                  </div>
+                  {isSelectedForEdit ? (
+                    <div className="conv-editor">
+                      <textarea
+                        value={draft}
+                        onChange={(e) => onDraftChange(e.target.value)}
+                        placeholder="Editar respuesta antes de enviar"
+                      />
+                      <div className="action-bar">
+                        <button
+                          className="primary-action"
+                          type="button"
+                          disabled={!draft.trim() || submitting !== null}
+                          onClick={() => onSubmit('send-edited', ticket.id)}
+                        >
+                          {submitting === 'send-edited' ? 'Enviando...' : 'Editar y enviar'}
+                        </button>
+                        <button
+                          className="secondary-action"
+                          type="button"
+                          disabled={submitting !== null}
+                          onClick={() => onSubmit('approve', ticket.id)}
+                        >
+                          Aprobar sin cambios
+                        </button>
+                        <button
+                          className="secondary-action"
+                          type="button"
+                          disabled={submitting !== null}
+                          onClick={() => onSubmit('manual', ticket.id)}
+                        >
+                          Manual
+                        </button>
+                        <button
+                          className="danger-action"
+                          type="button"
+                          disabled={submitting !== null}
+                          onClick={() => onSubmit('discard', ticket.id)}
+                        >
+                          Descartar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      {ticket.aiReply ? (
+                        <p className="bubble-text">{ticket.aiReply}</p>
+                      ) : (
+                        <p className="bubble-text muted">Sin respuesta IA generada</p>
+                      )}
+                      <button
+                        className="ghost-button"
+                        style={{ marginTop: 8 }}
+                        type="button"
+                        onClick={() =>
+                          onSelectTicket(
+                            ticket.id,
+                            ticket.finalReply || ticket.aiReply || ''
+                          )
+                        }
+                      >
+                        Revisar este ticket
+                      </button>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="thread-bubble bubble-admin sent">
+                  <div className="bubble-header">
+                    <span className="bubble-who">
+                      ✅ Susana · {labelForStatus(ticket.status)}
+                    </span>
+                    {adminText ? <CopyButton text={adminText} /> : null}
+                  </div>
+                  <p className="bubble-text">{adminText || 'Sin texto registrado'}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -294,7 +627,7 @@ function ReviewPane({
   draft: string;
   dirty: boolean;
   onDraftChange: (value: string) => void;
-  onSubmit: (action: 'send-edited' | 'approve' | 'manual' | 'discard') => void;
+  onSubmit: (action: SubmitAction, ticketId?: string) => void;
   submitting: string | null;
   ticket: Ticket | null;
 }) {
@@ -306,7 +639,9 @@ function ReviewPane({
     );
   }
 
-  const reviewable = ['new', 'ai_generated', 'pending_review', 'send_failed'].includes(ticket.status);
+  const reviewable = ['new', 'ai_generated', 'pending_review', 'send_failed'].includes(
+    ticket.status
+  );
 
   return (
     <section className="review-pane">
@@ -334,11 +669,17 @@ function ReviewPane({
 
       <div className="review-grid">
         <article className="message-block">
-          <h3>Correo original</h3>
+          <div className="message-block-header">
+            <h3>Correo original</h3>
+            <CopyButton text={ticket.originalText} />
+          </div>
           <div>{ticket.originalText}</div>
         </article>
         <article className="message-block ai-block">
-          <h3>Respuesta IA</h3>
+          <div className="message-block-header">
+            <h3>Respuesta IA</h3>
+            {ticket.aiReply ? <CopyButton text={ticket.aiReply} /> : null}
+          </div>
           <div>{ticket.aiReply || 'Este correo no tiene respuesta generada por IA.'}</div>
         </article>
       </div>
@@ -350,7 +691,7 @@ function ReviewPane({
         </div>
         <textarea
           value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
+          onChange={(e) => onDraftChange(e.target.value)}
           disabled={!reviewable}
           placeholder="Escribe la respuesta final para el cliente"
         />
@@ -408,8 +749,24 @@ function ReviewPane({
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  return (
+    <button className="copy-btn" type="button" onClick={copy} title="Copiar al portapapeles">
+      {copied ? '✓ Copiado' : 'Copiar'}
+    </button>
+  );
+}
+
 function StatusBadge({ status }: { status: TicketStatus }) {
-  return <span className={`status-badge tone-${statusTone[status]}`}>{labelForStatus(status)}</span>;
+  return (
+    <span className={`status-badge tone-${statusTone[status]}`}>{labelForStatus(status)}</span>
+  );
 }
 
 function formatDate(value: string) {

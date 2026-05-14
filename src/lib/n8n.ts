@@ -7,6 +7,7 @@ export type SendApprovedPayload = {
   final_reply: string;
   approved_by: string;
   approval_action: 'approved' | 'edited';
+  in_reply_to_message_id?: string;
 };
 
 export type N8nSendResult =
