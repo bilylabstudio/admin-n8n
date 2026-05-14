@@ -14,14 +14,23 @@ export type N8nSendResult =
   | { ok: false; error: string; message?: string };
 
 export async function sendApprovedReply(payload: SendApprovedPayload): Promise<N8nSendResult> {
-  const response = await fetch(env.N8N_SEND_APPROVED_WEBHOOK_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Review-Admin-Token': env.N8N_SEND_APPROVED_SECRET
-    },
-    body: JSON.stringify(payload)
-  });
+  let response: Response;
+  try {
+    response = await fetch(env.N8N_SEND_APPROVED_WEBHOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Review-Admin-Token': env.N8N_SEND_APPROVED_SECRET
+      },
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      error: 'n8n_request_failed',
+      message: error instanceof Error ? error.message : 'Could not reach n8n webhook.'
+    };
+  }
 
   const data = (await response.json().catch(() => null)) as N8nSendResult | null;
 

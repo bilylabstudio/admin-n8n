@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { sendApprovedReply } from '@/lib/n8n';
+import { redirectToApp } from '@/lib/redirects';
 import { canReview } from '@/lib/status';
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
@@ -11,7 +11,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const ticket = await db.ticket.findUnique({ where: { id: params.id } });
 
   if (!ticket || !canReview(ticket.status) || !finalReply) {
-    return NextResponse.redirect(new URL(`/tickets/${params.id}?error=invalid_reply`, request.url), 303);
+    return redirectToApp(`/tickets/${params.id}?error=invalid_reply`);
   }
 
   const result = await sendApprovedReply({
@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         metadataJson: result
       }
     });
-    return NextResponse.redirect(new URL(`/tickets/${ticket.id}?error=send_failed`, request.url), 303);
+    return redirectToApp(`/tickets/${ticket.id}?error=send_failed`);
   }
 
   await db.ticket.update({
@@ -64,5 +64,5 @@ export async function POST(request: Request, { params }: { params: { id: string 
     }
   });
 
-  return NextResponse.redirect(new URL(`/tickets/${ticket.id}`, request.url), 303);
+  return redirectToApp(`/tickets/${ticket.id}`);
 }
