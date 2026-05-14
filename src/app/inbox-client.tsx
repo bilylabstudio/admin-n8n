@@ -174,9 +174,15 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   return (
     <main className="admin-shell">
       <header className="admin-topbar">
-        <div>
-          <p className="eyebrow">V-Gummies soporte</p>
-          <h1>Bandeja de revision</h1>
+        <div className="brand-lockup">
+          <img
+            src="https://v-gummies.com/cdn/shop/files/logo_negro.png?v=1737016595&width=220"
+            alt="V-gummies"
+          />
+          <div>
+            <p className="eyebrow">Area administrativa</p>
+            <h1>Soporte V-Gummies</h1>
+          </div>
         </div>
         <div className="topbar-meta">
           <span>{updatedAt ? `Actualizado ${formatRelative(updatedAt)}` : 'Sin actualizar'}</span>
@@ -188,7 +194,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       <section className="inbox-layout" aria-label="Bandeja de tickets">
         <aside className="status-rail" aria-label="Estados">
           <div className="rail-heading">
-            <span>Estados</span>
+            <span>Cola de bienestar</span>
             <button className="ghost-button" type="button" onClick={() => loadTickets('manual')}>
               Actualizar
             </button>
@@ -211,7 +217,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         <section className="ticket-list-panel">
           <div className="list-toolbar">
             <label className="search-field">
-              <span>Buscar</span>
+              <span>Buscar cliente</span>
               <input
                 value={query}
                 onChange={(event) => updateQuery(event.target.value)}
@@ -306,7 +312,7 @@ function ReviewPane({
     <section className="review-pane">
       <div className="review-header">
         <div>
-          <p className="eyebrow">{ticket.customerEmail}</p>
+          <p className="eyebrow">Cuidar desde adentro - {ticket.customerEmail}</p>
           <h2>{ticket.subject}</h2>
         </div>
         <StatusBadge status={ticket.status} />

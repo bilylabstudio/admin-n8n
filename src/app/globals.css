@@ -1,27 +1,55 @@
+@font-face {
+  font-family: Archivo;
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("https://v-gummies.com/cdn/fonts/archivo/archivo_n4.dc8d917cc69af0a65ae04d01fd8eeab28a3573c9.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Archivo;
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("https://v-gummies.com/cdn/fonts/archivo/archivo_n7.651b020b3543640c100112be6f1c1b8e816c7f13.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: Poppins;
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("https://v-gummies.com/cdn/fonts/poppins/poppins_n5.ad5b4b72b59a00358afc706450c864c3c8323842.woff2") format("woff2");
+}
+
 :root {
   color-scheme: light;
-  --paper: #f5f3ef;
-  --surface: #fffdf8;
+  --paper: #f8f8f8;
+  --surface: #ffffff;
   --surface-raised: #ffffff;
-  --surface-inset: #f0eee8;
-  --ink: #24231f;
-  --ink-soft: #5f5b52;
-  --ink-muted: #8a8579;
-  --line-soft: rgba(36, 35, 31, 0.08);
-  --line: rgba(36, 35, 31, 0.14);
-  --focus: #2f6f45;
-  --gummy-green: #2f6f45;
-  --review-amber: #9a6b18;
-  --review-amber-bg: #fff3d8;
+  --surface-inset: #f2f7f7;
+  --ink: #2e2a39;
+  --ink-soft: #5f596d;
+  --ink-muted: #8f889f;
+  --line-soft: rgba(46, 42, 57, 0.08);
+  --line: rgba(46, 42, 57, 0.14);
+  --focus: #63b2b7;
+  --gummy-teal: #63b2b7;
+  --gummy-violet: #a891f6;
+  --gummy-ink: #2e2a39;
+  --gummy-blue: #334fb4;
+  --review-amber: #7d5f00;
+  --review-amber-bg: #fff5d1;
   --error-red: #a43d35;
   --error-bg: #fde9e6;
-  --manual-violet: #6d5b8d;
-  --manual-bg: #eee9f8;
-  --neutral-bg: #e9eef4;
-  --muted-bg: #ece9e3;
+  --manual-violet: #7c65ca;
+  --manual-bg: #f0ebff;
+  --neutral-bg: #eaf6f7;
+  --muted-bg: #eeeeee;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --font-ui: Arial, Helvetica, sans-serif;
+  --font-ui: Archivo, Arial, Helvetica, sans-serif;
+  --font-display: Poppins, Archivo, Arial, Helvetica, sans-serif;
 }
 
 * {
@@ -69,9 +97,24 @@ button {
   background: var(--surface);
 }
 
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.brand-lockup img {
+  width: 110px;
+  height: auto;
+  flex: 0 0 auto;
+}
+
 .admin-topbar h1,
 .review-header h2 {
   margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
   font-size: 20px;
   line-height: 1.15;
   letter-spacing: 0;
@@ -96,7 +139,7 @@ button {
 }
 
 .topbar-meta a {
-  color: var(--gummy-green);
+  color: var(--gummy-teal);
   font-weight: 700;
 }
 
@@ -149,8 +192,8 @@ button {
 
 .ghost-button:hover,
 .inline-error button:hover {
-  border-color: rgba(47, 111, 69, 0.35);
-  color: var(--gummy-green);
+  border-color: rgba(99, 178, 183, 0.5);
+  color: var(--gummy-teal);
 }
 
 .status-nav {
@@ -238,17 +281,17 @@ button {
 .textarea:focus,
 .select:focus,
 .editor-panel textarea:focus {
-  border-color: rgba(47, 111, 69, 0.55);
-  box-shadow: 0 0 0 3px rgba(47, 111, 69, 0.1);
+  border-color: rgba(99, 178, 183, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 178, 183, 0.15);
 }
 
 .live-notice {
   margin: 0;
-  border: 1px solid rgba(47, 111, 69, 0.2);
+  border: 1px solid rgba(99, 178, 183, 0.32);
   border-radius: 999px;
   padding: 6px 9px;
-  background: rgba(47, 111, 69, 0.08);
-  color: var(--gummy-green);
+  background: rgba(99, 178, 183, 0.13);
+  color: #347d83;
   font-size: 12px;
   font-weight: 700;
   white-space: nowrap;
@@ -292,7 +335,8 @@ button {
 
 .ticket-row.selected {
   background: var(--surface-raised);
-  border-color: rgba(47, 111, 69, 0.28);
+  border-color: rgba(168, 145, 246, 0.45);
+  box-shadow: inset 3px 0 0 var(--gummy-violet);
 }
 
 .row-main,
@@ -384,13 +428,13 @@ button {
 }
 
 .tone-success {
-  background: rgba(47, 111, 69, 0.1);
-  color: var(--gummy-green);
+  background: rgba(99, 178, 183, 0.16);
+  color: #347d83;
 }
 
 .tone-neutral {
   background: var(--neutral-bg);
-  color: #506071;
+  color: var(--gummy-blue);
 }
 
 .tone-manual {
@@ -521,7 +565,7 @@ button {
 
 .primary-action,
 .button {
-  background: var(--gummy-green);
+  background: var(--gummy-teal);
   color: #fff;
 }
 
@@ -539,7 +583,7 @@ button {
 }
 
 .button.success {
-  background: var(--gummy-green);
+  background: var(--gummy-teal);
 }
 
 .primary-action:disabled,
@@ -594,6 +638,8 @@ button {
 
 .topbar h1 {
   margin: 0;
+  font-family: var(--font-display);
+  font-weight: 500;
   font-size: 20px;
 }
 
@@ -646,6 +692,9 @@ button {
   max-width: 420px;
   margin: 80px auto;
   padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .pre {
