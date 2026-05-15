@@ -131,7 +131,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           previousIds.size > 0 && data.tickets.some((t) => !previousIds.has(t.id));
 
         knownIds.current = incomingIds;
-        setTickets(data.tickets);
+        setTickets(data.tickets.map(fixTicket));
         setCounts(data.counts || {});
         setUpdatedAt(new Date(data.serverTime));
 
@@ -159,8 +159,9 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       });
       const data = (await res.json()) as { ok: boolean; tickets: Ticket[] };
       if (data.ok) {
-        setConversationTickets(data.tickets);
-        const firstPending = data.tickets.find((t) => REVIEWABLE.includes(t.status));
+        const fixedTickets = data.tickets.map(fixTicket);
+        setConversationTickets(fixedTickets);
+        const firstPending = fixedTickets.find((t) => REVIEWABLE.includes(t.status));
         if (firstPending) {
           setSelectedId(firstPending.id);
           setDraft(firstPending.finalReply || firstPending.aiReply || '');
@@ -804,4 +805,27 @@ function formatRelative(value: Date) {
 function preview(value: string) {
   const normalized = value.replace(/\s+/g, ' ').trim();
   return normalized.length > 130 ? `${normalized.slice(0, 130)}...` : normalized;
+}
+
+function fixMojibake(str: string | null): string | null {
+  if (!str) return str;
+  try {
+    const td = new TextDecoder('utf-8', { fatal: true });
+    return td.decode(new Uint8Array(str.split('').map(c => c.charCodeAt(0))));
+  } catch {
+    return str;
+  }
+}
+
+function fixTicket(t: Ticket): Ticket {
+  return {
+    ...t,
+    customerName: fixMojibake(t.customerName),
+    subject: fixMojibake(t.subject) || '',
+    originalText: fixMojibake(t.originalText) || '',
+    aiReply: fixMojibake(t.aiReply) || '',
+    finalReply: fixMojibake(t.finalReply) || '',
+    category: fixMojibake(t.category),
+    intent: fixMojibake(t.intent)
+  };
 }
