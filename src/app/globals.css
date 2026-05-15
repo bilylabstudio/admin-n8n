@@ -450,8 +450,8 @@ button {
 
 .review-pane {
   border-right: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
   overflow: auto;
   padding: 16px;
@@ -829,9 +829,8 @@ button {
   margin: 0;
 }
 
-/* ── Conversation pane ───────────────────────────────────── */
 .conv-pane {
-  grid-template-rows: auto minmax(0, 1fr) !important;
+  /* Inherits flex-direction: column from .review-pane */
 }
 
 .conv-email {
