@@ -79,6 +79,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [viewMode, setViewMode] = useState<ViewMode>('tickets');
   const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string | null>(null);
   const [conversationTickets, setConversationTickets] = useState<Ticket[]>([]);
+  const [mobilePanel, setMobilePanel] = useState<'list' | 'detail'>('list');
   const [conversationLoading, setConversationLoading] = useState(false);
 
   const selectedTicket = useMemo(
@@ -167,6 +168,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           setDraft(firstPending.finalReply || firstPending.aiReply || '');
           setDirty(false);
         }
+        setMobilePanel('detail');
       }
     } catch {
       // silently ignore
@@ -197,6 +199,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setDraft(ticket.finalReply || ticket.aiReply || '');
     setDirty(false);
     setNotice('');
+    setMobilePanel('detail');
   };
 
   const switchViewMode = (mode: ViewMode) => {
@@ -204,6 +207,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setSelectedCustomerEmail(null);
     setConversationTickets([]);
     setNotice('');
+    setMobilePanel('list');
   };
 
   const submitAction = async (action: SubmitAction, ticketId?: string) => {
@@ -258,7 +262,10 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         </div>
       </header>
 
-      <section className="inbox-layout" aria-label="Bandeja de tickets">
+      <section
+        className={`inbox-layout ${mobilePanel === 'detail' ? 'mobile-detail' : 'mobile-list'}`}
+        aria-label="Bandeja de tickets"
+      >
         <aside className="status-rail" aria-label="Estados">
           <div className="rail-heading">
             <span>Cola de bienestar</span>
@@ -389,39 +396,43 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           </div>
         </section>
 
-        {viewMode === 'conversations' ? (
-          <ConversationPane
-            customerEmail={selectedCustomerEmail}
-            tickets={conversationTickets}
-            loading={conversationLoading}
-            draft={draft}
-            dirty={dirty}
-            selectedId={selectedId}
-            onDraftChange={(value) => {
-              setDraft(value);
-              setDirty(true);
-            }}
-            onSelectTicket={(id, defaultDraft) => {
-              setSelectedId(id);
-              setDraft(defaultDraft);
-              setDirty(false);
-            }}
-            onSubmit={submitAction}
-            submitting={submitting}
-          />
-        ) : (
-          <ReviewPane
-            draft={draft}
-            dirty={dirty}
-            onDraftChange={(value) => {
-              setDraft(value);
-              setDirty(true);
-            }}
-            onSubmit={submitAction}
-            submitting={submitting}
-            ticket={selectedTicket}
-          />
-        )}
+        <div className="detail-panel-wrapper">
+          {viewMode === 'conversations' ? (
+            <ConversationPane
+              customerEmail={selectedCustomerEmail}
+              tickets={conversationTickets}
+              loading={conversationLoading}
+              draft={draft}
+              dirty={dirty}
+              selectedId={selectedId}
+              onBack={() => setMobilePanel('list')}
+              onDraftChange={(value) => {
+                setDraft(value);
+                setDirty(true);
+              }}
+              onSelectTicket={(id, defaultDraft) => {
+                setSelectedId(id);
+                setDraft(defaultDraft);
+                setDirty(false);
+              }}
+              onSubmit={submitAction}
+              submitting={submitting}
+            />
+          ) : (
+            <ReviewPane
+              draft={draft}
+              dirty={dirty}
+              onBack={() => setMobilePanel('list')}
+              onDraftChange={(value) => {
+                setDraft(value);
+                setDirty(true);
+              }}
+              onSubmit={submitAction}
+              submitting={submitting}
+              ticket={selectedTicket}
+            />
+          )}
+        </div>
       </section>
     </main>
   );
@@ -434,6 +445,7 @@ function ConversationPane({
   draft,
   dirty,
   selectedId,
+  onBack,
   onDraftChange,
   onSelectTicket,
   onSubmit,
@@ -445,6 +457,7 @@ function ConversationPane({
   draft: string;
   dirty: boolean;
   selectedId: string | null;
+  onBack: () => void;
   onDraftChange: (value: string) => void;
   onSelectTicket: (id: string, defaultDraft: string) => void;
   onSubmit: (action: SubmitAction, ticketId?: string) => void;
@@ -478,6 +491,9 @@ function ConversationPane({
 
   return (
     <section className="review-pane conv-pane">
+      <button className="mobile-back-btn" type="button" onClick={onBack}>
+        ← Volver
+      </button>
       <div className="review-header">
         <div>
           <p className="eyebrow">Conversación completa</p>
@@ -626,6 +642,7 @@ function ConversationPane({
 function ReviewPane({
   draft,
   dirty,
+  onBack,
   onDraftChange,
   onSubmit,
   submitting,
@@ -633,6 +650,7 @@ function ReviewPane({
 }: {
   draft: string;
   dirty: boolean;
+  onBack: () => void;
   onDraftChange: (value: string) => void;
   onSubmit: (action: SubmitAction, ticketId?: string) => void;
   submitting: string | null;
@@ -652,6 +670,9 @@ function ReviewPane({
 
   return (
     <section className="review-pane">
+      <button className="mobile-back-btn" type="button" onClick={onBack}>
+        ← Volver
+      </button>
       <div className="review-header">
         <div>
           <p className="eyebrow">Cuidar desde adentro - {ticket.customerEmail}</p>
