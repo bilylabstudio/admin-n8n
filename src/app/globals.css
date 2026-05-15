@@ -719,6 +719,41 @@ button {
   gap: 16px;
 }
 
+/* ── Escalation tag + banner ────────────────────────────── */
+.tag-escalate {
+  background: var(--error-bg) !important;
+  color: var(--error-red) !important;
+}
+
+.escalation-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid rgba(164, 61, 53, 0.28);
+  border-radius: var(--radius-md);
+  padding: 11px 14px;
+  background: var(--error-bg);
+  color: var(--error-red);
+}
+
+.escalation-banner > span {
+  font-size: 16px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.escalation-banner strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+
+.escalation-banner p {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 /* ── View mode toggle ───────────────────────────────────── */
 .list-toolbar .search-field {
   flex: 1 1 auto;

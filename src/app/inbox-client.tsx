@@ -252,6 +252,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         <div className="topbar-meta">
           <span>{updatedAt ? `Actualizado ${formatRelative(updatedAt)}` : 'Sin actualizar'}</span>
           <span>{userEmail}</span>
+          <a href="/blocklist">Lista negra</a>
           <a href="/logout">Salir</a>
         </div>
       </header>
@@ -348,9 +349,8 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                     <span className="row-tags">
                       {ticket.category ? <em>{ticket.category}</em> : null}
                       {ticket.intent ? <em>{ticket.intent}</em> : null}
-                      {ticket.escalationRecommended || ticket.riskFlags ? (
-                        <b>Revisar riesgo</b>
-                      ) : null}
+                      {ticket.escalationRecommended ? <b className="tag-escalate">⚡ Escalar</b> : null}
+                      {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
                     </span>
                   </button>
                 ))}
@@ -526,6 +526,12 @@ function ConversationPane({
                 <div
                   className={`thread-bubble bubble-admin ${isSelectedForEdit ? 'editing' : 'pending'}`}
                 >
+                  {ticket.escalationRecommended ? (
+                    <div className="escalation-banner" style={{ marginBottom: 8 }}>
+                      <span>⚡</span>
+                      <div><strong>Requiere atención humana</strong></div>
+                    </div>
+                  ) : null}
                   <div className="bubble-header">
                     <span className="bubble-who">
                       🤖 Susana · <StatusBadge status={ticket.status} />
@@ -659,6 +665,16 @@ function ReviewPane({
         {ticket.intent ? <span>{ticket.intent}</span> : null}
         {ticket.escalationRecommended ? <strong>Escalar</strong> : null}
       </div>
+
+      {ticket.escalationRecommended ? (
+        <div className="escalation-banner">
+          <span>⚡</span>
+          <div>
+            <strong>Este ticket requiere atención humana</strong>
+            <p>Responde al cliente e informa al equipo de soporte.</p>
+          </div>
+        </div>
+      ) : null}
 
       {ticket.sendError ? (
         <div className="send-error">

@@ -81,6 +81,13 @@ model Ticket {
   @@index([customerEmail])
 }
 
+model BlockedEmail {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  reason    String?
+  createdAt DateTime @default(now())
+}
+
 model AuditEvent {
   id           String          @id @default(cuid())
   ticketId     String?
