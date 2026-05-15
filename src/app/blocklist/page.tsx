@@ -5,12 +5,35 @@ import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
+async function addEmail(data: FormData) {
+  'use server';
+  const email = String(data.get('email') || '').trim().toLowerCase();
+  const reason = String(data.get('reason') || '').trim();
+  if (!email || !email.includes('@')) {
+    redirect('/blocklist?error=Email+inv%C3%A1lido');
+  }
+  await db.blockedEmail.upsert({
+    where: { email },
+    create: { email, reason },
+    update: { reason }
+  });
+  redirect('/blocklist?success=Correo+bloqueado+correctamente');
+}
+
+async function deleteEmail(data: FormData) {
+  'use server';
+  const id = String(data.get('id') || '');
+  if (!id) redirect('/blocklist');
+  await db.blockedEmail.delete({ where: { id } });
+  redirect('/blocklist?success=Correo+desbloqueado');
+}
+
 export default async function BlocklistPage({
   searchParams
 }: {
   searchParams: { error?: string; success?: string };
 }) {
-  const user = await requireUser();
+  await requireUser();
 
   const blocked = await db.blockedEmail.findMany({ orderBy: { createdAt: 'desc' } });
 
@@ -26,7 +49,6 @@ export default async function BlocklistPage({
           <h1>Lista negra de correos</h1>
         </div>
         <div style={{ display: 'flex', gap: 12, fontSize: 13, color: '#5f596d' }}>
-          <span>{user.email}</span>
           <Link href="/">← Volver al inbox</Link>
           <a href="/logout">Salir</a>
         </div>
@@ -35,38 +57,29 @@ export default async function BlocklistPage({
       <div className="container" style={{ maxWidth: 680 }}>
         {searchParams.error ? (
           <p style={{ color: 'var(--error-red)', marginBottom: 12 }}>
-            Error: {searchParams.error}
+            Error: {decodeURIComponent(searchParams.error)}
           </p>
         ) : null}
         {searchParams.success ? (
-          <p style={{ color: '#347d83', marginBottom: 12 }}>{searchParams.success}</p>
+          <p style={{ color: '#347d83', marginBottom: 12 }}>
+            {decodeURIComponent(searchParams.success)}
+          </p>
         ) : null}
 
         <section className="panel" style={{ padding: 20, marginBottom: 20 }}>
           <h2 style={{ margin: '0 0 14px', fontSize: 15 }}>Añadir correo bloqueado</h2>
-          <form
-            action={async (data: FormData) => {
-              'use server';
-              const email = String(data.get('email') || '').trim().toLowerCase();
-              const reason = String(data.get('reason') || '').trim();
-              if (!email || !email.includes('@')) {
-                redirect('/blocklist?error=Email+inválido');
-              }
-              try {
-                await db.blockedEmail.upsert({
-                  where: { email },
-                  create: { email, reason },
-                  update: { reason }
-                });
-              } catch {
-                redirect('/blocklist?error=Error+al+guardar');
-              }
-              redirect('/blocklist?success=Correo+bloqueado+correctamente');
-            }}
-            style={{ display: 'grid', gap: 10 }}
-          >
+          <form action={addEmail} style={{ display: 'grid', gap: 10 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, fontWeight: 700, color: '#8f889f', textTransform: 'uppercase' }}>
+              <label
+                style={{
+                  display: 'grid',
+                  gap: 4,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#8f889f',
+                  textTransform: 'uppercase'
+                }}
+              >
                 Email *
                 <input
                   className="input"
@@ -76,7 +89,16 @@ export default async function BlocklistPage({
                   placeholder="no-responder@dominio.com"
                 />
               </label>
-              <label style={{ display: 'grid', gap: 4, fontSize: 12, fontWeight: 700, color: '#8f889f', textTransform: 'uppercase' }}>
+              <label
+                style={{
+                  display: 'grid',
+                  gap: 4,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: '#8f889f',
+                  textTransform: 'uppercase'
+                }}
+              >
                 Motivo (opcional)
                 <input
                   className="input"
@@ -87,7 +109,9 @@ export default async function BlocklistPage({
               </label>
             </div>
             <div>
-              <button className="button" type="submit">Bloquear correo</button>
+              <button className="button" type="submit">
+                Bloquear correo
+              </button>
             </div>
           </form>
         </section>
@@ -125,17 +149,8 @@ export default async function BlocklistPage({
                       }).format(new Date(entry.createdAt))}
                     </td>
                     <td>
-                      <form
-                        action={async () => {
-                          'use server';
-                          try {
-                            await db.blockedEmail.delete({ where: { id: entry.id } });
-                          } catch {
-                            redirect('/blocklist?error=Error+al+eliminar');
-                          }
-                          redirect('/blocklist?success=Correo+desbloqueado');
-                        }}
-                      >
+                      <form action={deleteEmail}>
+                        <input type="hidden" name="id" value={entry.id} />
                         <button
                           className="button danger"
                           type="submit"
