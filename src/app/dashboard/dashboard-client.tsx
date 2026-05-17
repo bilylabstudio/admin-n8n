@@ -146,7 +146,7 @@ export function DashboardClient() {
           <h1>Dashboard de soporte</h1>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, fontSize: 13, color: 'var(--ink-soft)' }}>
-          <span className="db-updated">{updatedAt ? `Actualizado ${formatRelative(updatedAt)}` : 'Cargando...'}</span>
+          <span className="db-updated"><span className="db-live-dot" />{updatedAt ? `Actualizado ${formatRelative(updatedAt)}` : 'Cargando...'}</span>
           <div className="db-period-selector">
             {(['7d', '30d', '90d'] as Period[]).map((p) => (
               <button key={p} className={period === p ? 'db-period-btn active' : 'db-period-btn'} type="button" onClick={() => setPeriod(p)}>

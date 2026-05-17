@@ -975,57 +975,84 @@ button {
    ══════════════════════════════════════════════════════════ */
 
 .db-section {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 .db-section-title {
-  margin: 0 0 12px;
-  font-size: 14px;
+  margin: 0 0 14px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--ink-soft);
+  color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.db-section-title::before {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 12px;
+  background: var(--gummy-teal);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+/* Padding for dashboard panel sections */
+.db-section.panel {
+  padding: 18px 20px;
 }
 
 /* ── KPI cards ── */
 .db-kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: 14px;
 }
 
 .db-kpi-card {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 16px 18px;
+  padding: 18px 20px 16px;
   background: var(--surface-raised);
+  transition: box-shadow 0.15s, transform 0.15s;
 }
 
-.db-kpi-ok { border-left: 3px solid var(--gummy-teal); }
-.db-kpi-warning { border-left: 3px solid var(--review-amber); background: var(--review-amber-bg); }
-.db-kpi-error { border-left: 3px solid var(--error-red); background: var(--error-bg); }
+.db-kpi-card:hover {
+  box-shadow: 0 4px 12px rgba(46, 42, 57, 0.08);
+  transform: translateY(-1px);
+}
+
+.db-kpi-ok { border-top: 2px solid var(--gummy-teal); }
+.db-kpi-warning { border-top: 2px solid var(--review-amber); background: var(--review-amber-bg); }
+.db-kpi-error { border-top: 2px solid var(--error-red); background: var(--error-bg); }
 
 .db-kpi-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
 }
 
 .db-kpi-value {
-  font-size: 28px;
+  font-size: 32px;
   font-family: var(--font-display);
   font-weight: 500;
   color: var(--ink);
-  line-height: 1.1;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
 }
 
 .db-kpi-sub {
   font-size: 11px;
   color: var(--ink-muted);
+  margin-top: 2px;
 }
 
 /* ── Two column layout ── */
@@ -1033,16 +1060,16 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
 }
 
 /* ── Bar chart ── */
 .db-bar-chart {
   display: flex;
   align-items: flex-end;
-  gap: 3px;
-  height: 120px;
-  padding-bottom: 20px;
+  gap: 4px;
+  height: 140px;
+  padding-bottom: 22px;
   overflow: hidden;
 }
 
@@ -1051,7 +1078,7 @@ button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   height: 100%;
 }
@@ -1066,20 +1093,25 @@ button {
 .db-bar {
   width: 100%;
   background: var(--gummy-teal);
-  border-radius: 2px 2px 0 0;
+  border-radius: 3px 3px 0 0;
   min-height: 2px;
-  opacity: 0.85;
-  transition: height 0.3s ease;
+  opacity: 0.78;
+  transition: height 0.4s ease, opacity 0.15s;
+}
+
+.db-bar:hover {
+  opacity: 1;
 }
 
 .db-bar-label {
   font-size: 9px;
   color: var(--ink-muted);
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 
 .db-chart-total {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   font-size: 12px;
   color: var(--ink-muted);
 }
@@ -1089,7 +1121,7 @@ button {
   display: grid;
   grid-template-columns: 140px 1fr 36px;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .db-pct-label {
@@ -1101,16 +1133,16 @@ button {
 }
 
 .db-pct-track {
-  height: 8px;
+  height: 7px;
   border-radius: 4px;
-  background: var(--surface-inset);
+  background: rgba(46, 42, 57, 0.07);
   overflow: hidden;
 }
 
 .db-pct-fill {
   height: 100%;
   border-radius: 4px;
-  transition: width 0.3s ease;
+  transition: width 0.4s ease;
 }
 
 .db-pct-value {
@@ -1118,41 +1150,50 @@ button {
   font-weight: 700;
   color: var(--ink-muted);
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── Intent grid ── */
 .db-intent-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 12px;
 }
 
 .db-intent-card {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 12px;
+  padding: 14px;
   background: var(--surface-raised);
+  transition: box-shadow 0.15s;
+}
+
+.db-intent-card:hover {
+  box-shadow: 0 2px 8px rgba(46, 42, 57, 0.07);
 }
 
 .db-intent-name {
-  font-size: 11px;
-  color: var(--ink-soft);
+  font-size: 10px;
+  color: var(--ink-muted);
   font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .db-intent-count {
-  font-size: 20px;
+  font-size: 22px;
   font-family: var(--font-display);
   font-weight: 500;
   color: var(--ink);
+  line-height: 1;
 }
 
 .db-intent-bar {
-  height: 4px;
+  height: 3px;
   border-radius: 2px;
-  background: var(--surface-inset);
+  background: rgba(46, 42, 57, 0.08);
   overflow: hidden;
 }
 
@@ -1162,25 +1203,48 @@ button {
   gap: 2px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  overflow: hidden;
+  padding: 2px;
+  background: var(--surface-inset);
 }
 
 .db-period-btn {
   border: none;
   background: transparent;
   color: var(--ink-soft);
-  padding: 5px 10px;
+  padding: 4px 10px;
   font-size: 12px;
   font-weight: 700;
+  border-radius: 4px;
   cursor: pointer;
+  transition: background 0.12s, color 0.12s;
 }
 
 .db-period-btn.active {
+  background: var(--surface);
+  color: var(--gummy-teal);
+  box-shadow: 0 1px 3px rgba(46, 42, 57, 0.1);
+}
+
+/* ── Live indicator ── */
+.db-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   background: var(--gummy-teal);
-  color: #fff;
+  flex-shrink: 0;
+  animation: db-pulse 2.5s ease-in-out infinite;
+}
+
+@keyframes db-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 .db-updated {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   color: var(--ink-muted);
 }
