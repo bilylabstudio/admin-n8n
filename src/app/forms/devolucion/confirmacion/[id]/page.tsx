@@ -1,30 +1,23 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
 import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export default async function ConfirmationPage({ params }: { params: { token: string } }) {
-  const form = await db.formSubmission.findUnique({
-    where: { token: params.token },
-    include: { images: { select: { id: true, filename: true, mimeType: true } } }
-  });
+export default async function ConfirmationPage({ params }: { params: { id: string } }) {
+  const form = await db.formSubmission.findUnique({ where: { id: params.id } });
 
   if (!form) {
     return (
       <main className="public-form-shell">
         <div className="public-form-card">
           <header className="public-form-header">
-            <h1>Enlace no válido</h1>
+            <h1>Solicitud no encontrada</h1>
           </header>
+          <p>El identificador no corresponde a ninguna solicitud.</p>
         </div>
       </main>
     );
-  }
-
-  if (form.status === 'pending') {
-    redirect(`/forms/devolucion/${params.token}`);
   }
 
   return (
@@ -51,24 +44,6 @@ export default async function ConfirmationPage({ params }: { params: { token: st
           ) : null}
           <p><strong>Motivo:</strong></p>
           <p style={{ whiteSpace: 'pre-wrap' }}>{form.reason || '-'}</p>
-
-          {form.images.length > 0 ? (
-            <div className="public-form-thumbs">
-              {form.images.map((img) => (
-                <a
-                  key={img.id}
-                  href={`/api/forms/${form.id}/images/${img.id}?t=${encodeURIComponent(form.token)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <img
-                    src={`/api/forms/${form.id}/images/${img.id}?t=${encodeURIComponent(form.token)}`}
-                    alt={img.filename}
-                  />
-                </a>
-              ))}
-            </div>
-          ) : null}
         </section>
 
         <p>

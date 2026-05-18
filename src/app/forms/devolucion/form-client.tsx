@@ -6,20 +6,18 @@ import { useState } from 'react';
 const MAX_FILES = 3;
 const MAX_BYTES = 5 * 1024 * 1024;
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
-
-type Props = {
-  token: string;
-  customerEmail: string;
-};
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 type SelectedFile = { file: File; sizeKb: number };
 
-export function FormClient({ token, customerEmail }: Props) {
+export function FormClient() {
   const router = useRouter();
+  const [email, setEmail] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
   const [purchaseEmail, setPurchaseEmail] = useState('');
   const [reason, setReason] = useState('');
   const [files, setFiles] = useState<SelectedFile[]>([]);
+  const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -51,6 +49,11 @@ export function FormClient({ token, customerEmail }: Props) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('Email inválido.');
+      return;
+    }
     if (orderNumber.trim().length === 0) {
       setError('Falta el número de pedido.');
       return;
@@ -63,12 +66,14 @@ export function FormClient({ token, customerEmail }: Props) {
     setSubmitting(true);
     try {
       const body = new FormData();
+      body.set('email', email.trim().toLowerCase());
       body.set('orderNumber', orderNumber.trim());
       body.set('purchaseEmail', purchaseEmail.trim());
       body.set('reason', reason.trim());
+      body.set('_hp', honeypot);
       for (const f of files) body.append('files', f.file);
 
-      const res = await fetch(`/api/forms/devolucion/${token}/submit`, {
+      const res = await fetch('/api/forms/devolucion/submit', {
         method: 'POST',
         body
       });
@@ -79,7 +84,7 @@ export function FormClient({ token, customerEmail }: Props) {
         return;
       }
 
-      router.push(data.redirect_to || `/forms/devolucion/${token}/confirmacion`);
+      router.push(`/forms/devolucion/confirmacion/${data.form_id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error inesperado');
       setSubmitting(false);
@@ -89,8 +94,16 @@ export function FormClient({ token, customerEmail }: Props) {
   return (
     <form className="public-form" onSubmit={submit} noValidate>
       <label className="public-form-field">
-        <span>Tu email (verificado)</span>
-        <input value={customerEmail} readOnly />
+        <span>Email *</span>
+        <input
+          type="email"
+          name="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="tu@email.com"
+          autoComplete="email"
+          required
+        />
       </label>
 
       <label className="public-form-field">
@@ -113,6 +126,7 @@ export function FormClient({ token, customerEmail }: Props) {
           value={purchaseEmail}
           onChange={(e) => setPurchaseEmail(e.target.value)}
           placeholder="opcional"
+          autoComplete="off"
         />
       </label>
 
@@ -148,6 +162,23 @@ export function FormClient({ token, customerEmail }: Props) {
         ) : null}
       </div>
 
+      <div
+        aria-hidden="true"
+        style={{ position: 'absolute', left: '-9999px', height: 0, overflow: 'hidden' }}
+      >
+        <label>
+          No rellenes este campo
+          <input
+            type="text"
+            name="_hp"
+            tabIndex={-1}
+            autoComplete="off"
+            value={honeypot}
+            onChange={(e) => setHoneypot(e.target.value)}
+          />
+        </label>
+      </div>
+
       {error ? <p className="public-form-error">{error}</p> : null}
 
       <button className="public-form-submit" type="submit" disabled={submitting}>
@@ -161,10 +192,8 @@ function translateError(code: string | undefined): string {
   switch (code) {
     case 'rate_limited':
       return 'Demasiados intentos. Espera unos minutos antes de volver a intentar.';
-    case 'expired':
-      return 'Este enlace expiró. Pide uno nuevo a soporte.';
-    case 'already_submitted':
-      return 'Ya recibimos tu solicitud anterior.';
+    case 'invalid_email':
+      return 'El email no parece válido.';
     case 'missing_order_number':
       return 'Falta el número de pedido.';
     case 'reason_too_short':

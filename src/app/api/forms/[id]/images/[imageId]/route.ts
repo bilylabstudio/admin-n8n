@@ -20,22 +20,19 @@ export async function GET(
     throw err;
   }
 
+  // Admin session is required to view images. The public form flow no longer
+  // exposes images back to the customer; the confirmation page is text-only.
+  const user = await currentUser();
+  if (!user) {
+    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
+  }
+
   const image = await db.formImage.findUnique({
-    where: { id: params.imageId },
-    include: { form: { select: { id: true, token: true } } }
+    where: { id: params.imageId }
   });
 
   if (!image || image.formId !== params.id) {
     return NextResponse.json({ ok: false, error: 'not_found' }, { status: 404 });
-  }
-
-  // Auth: either admin session OR ?t=<token> matching the form's token
-  const user = await currentUser();
-  const queryToken = req.nextUrl.searchParams.get('t')?.trim();
-  const tokenMatches = Boolean(queryToken) && queryToken === image.form.token;
-
-  if (!user && !tokenMatches) {
-    return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 });
   }
 
   const absolutePath = absolutePathFor(image.storagePath);
