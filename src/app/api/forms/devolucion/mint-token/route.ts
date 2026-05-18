@@ -33,8 +33,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'invalid_payload' }, { status: 400 });
   }
 
-  const ticketId = body.ticket_id?.trim() || null;
+  const rawTicketId = body.ticket_id?.trim() || '';
+  // Only treat as a real Ticket reference if it looks like a cuid AND exists in the DB.
+  // The bot may pass a session_id (e.g. "email-foo-bar") which is not a Ticket FK.
+  const cuidLike = /^c[a-z0-9]{20,}$/.test(rawTicketId);
+  let ticketId: string | null = null;
+  let sessionHint: string | null = null;
+  if (cuidLike) {
+    const ticketExists = await db.ticket.findUnique({ where: { id: rawTicketId }, select: { id: true } });
+    if (ticketExists) ticketId = rawTicketId;
+    else sessionHint = rawTicketId;
+  } else if (rawTicketId) {
+    sessionHint = rawTicketId;
+  }
 
+  // Idempotency: prefer ticket linkage when available, otherwise dedupe by customer email
   const existing = ticketId
     ? await db.formSubmission.findFirst({
         where: {
@@ -44,7 +57,14 @@ export async function POST(req: NextRequest) {
           expiresAt: { gt: new Date() }
         }
       })
-    : null;
+    : await db.formSubmission.findFirst({
+        where: {
+          customerEmail: body.customer_email.trim().toLowerCase(),
+          type: 'devolucion',
+          status: 'pending',
+          expiresAt: { gt: new Date() }
+        }
+      });
 
   const form =
     existing ??
@@ -63,7 +83,11 @@ export async function POST(req: NextRequest) {
       data: {
         formId: form.id,
         eventType: 'form_minted',
-        metadataJson: { ticket_id: ticketId, customer_email: body.customer_email }
+        metadataJson: {
+          ticket_id: ticketId,
+          session_hint: sessionHint,
+          customer_email: body.customer_email
+        }
       }
     });
   }
