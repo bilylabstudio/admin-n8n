@@ -6,6 +6,7 @@ const envSchema = z.object({
   N8N_INGEST_SECRET: z.string().min(16),
   N8N_SEND_APPROVED_WEBHOOK_URL: z.string().url(),
   N8N_SEND_APPROVED_SECRET: z.string().min(16),
+  N8N_FORMS_MINT_SECRET: z.string().min(16).optional(),
   ADMIN_EMAILS: z.string().min(1),
   APP_BASE_URL: z.string().url().optional()
 });
@@ -16,6 +17,7 @@ export const env = envSchema.parse({
   N8N_INGEST_SECRET: process.env.N8N_INGEST_SECRET,
   N8N_SEND_APPROVED_WEBHOOK_URL: process.env.N8N_SEND_APPROVED_WEBHOOK_URL,
   N8N_SEND_APPROVED_SECRET: process.env.N8N_SEND_APPROVED_SECRET,
+  N8N_FORMS_MINT_SECRET: process.env.N8N_FORMS_MINT_SECRET,
   ADMIN_EMAILS: process.env.ADMIN_EMAILS,
   APP_BASE_URL: process.env.APP_BASE_URL
 });

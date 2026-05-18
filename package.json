@@ -7,7 +7,8 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "test": "vitest run --environment node src/lib/status.test.ts src/lib/auth.test.ts",
+    "test": "vitest run --environment node src/lib/status.test.ts src/lib/auth.test.ts src/lib/forms.test.ts src/lib/form-uploads.test.ts",
+    "cleanup:expired-forms": "tsx scripts/cleanup-expired-forms.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev",
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "file-type": "^19.6.0",
     "next": "^14.2.22",
     "prisma": "^5.22.0",
     "react": "^18.3.1",

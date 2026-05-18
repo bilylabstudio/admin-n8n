@@ -28,18 +28,38 @@ enum AuditEventType {
   send_failed
   login
   logout
+  form_minted
+  form_submitted
+  form_approved_sent
+  form_rejected_sent
+  form_manual
+  form_discarded
+}
+
+enum FormType {
+  devolucion
+}
+
+enum FormStatus {
+  pending
+  submitted
+  approved_sent
+  rejected_sent
+  manual
+  discarded
 }
 
 model User {
-  id              String       @id @default(cuid())
-  email           String       @unique
+  id              String           @id @default(cuid())
+  email           String           @unique
   name            String
   passwordHash    String
-  createdAt       DateTime     @default(now())
+  createdAt       DateTime         @default(now())
   lastLoginAt     DateTime?
   sessions        Session[]
   auditEvents     AuditEvent[]
-  approvedTickets Ticket[]     @relation("TicketApprovedBy")
+  approvedTickets Ticket[]         @relation("TicketApprovedBy")
+  approvedForms   FormSubmission[] @relation("FormApprovedBy")
 }
 
 model Session {
@@ -74,8 +94,9 @@ model Ticket {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  approvedBy User?        @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
+  approvedBy  User?            @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
   auditEvents AuditEvent[]
+  forms       FormSubmission[]
 
   @@index([status, receivedAt])
   @@index([customerEmail])
@@ -89,18 +110,69 @@ model BlockedEmail {
 }
 
 model AuditEvent {
-  id           String          @id @default(cuid())
+  id           String         @id @default(cuid())
   ticketId     String?
+  formId       String?
   userId       String?
   eventType    AuditEventType
   beforeStatus TicketStatus?
   afterStatus  TicketStatus?
   metadataJson Json?
-  createdAt    DateTime        @default(now())
+  createdAt    DateTime       @default(now())
 
-  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  ticket Ticket?         @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  form   FormSubmission? @relation(fields: [formId], references: [id], onDelete: Cascade)
+  user   User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt])
+  @@index([formId, createdAt])
   @@index([userId, createdAt])
+}
+
+model FormSubmission {
+  id       String   @id @default(cuid())
+  token    String   @unique
+  type     FormType @default(devolucion)
+  ticketId String?
+  ticket   Ticket?  @relation(fields: [ticketId], references: [id])
+
+  customerEmail String
+  orderNumber   String?
+  purchaseEmail String?
+  reason        String?
+
+  submittedAt DateTime?
+  ipAddress   String?
+  userAgent   String?
+
+  status           FormStatus @default(pending)
+  reviewNotes      String?
+  finalReply       String?
+  approvedByUserId String?
+  approvedBy       User?      @relation("FormApprovedBy", fields: [approvedByUserId], references: [id])
+  sentAt           DateTime?
+  sendError        String?
+
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images      FormImage[]
+  auditEvents AuditEvent[]
+
+  @@index([status, submittedAt])
+  @@index([ticketId])
+}
+
+model FormImage {
+  id          String         @id @default(cuid())
+  formId      String
+  form        FormSubmission @relation(fields: [formId], references: [id], onDelete: Cascade)
+  filename    String
+  storagePath String
+  mimeType    String
+  sizeBytes   Int
+  createdAt   DateTime       @default(now())
+
+  @@index([formId])
 }
