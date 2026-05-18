@@ -448,6 +448,18 @@ button {
   color: var(--ink-muted);
 }
 
+.detail-panel-wrapper {
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-panel-wrapper > .review-pane {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .review-pane {
   border-right: 0;
   display: flex;

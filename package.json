@@ -11,7 +11,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev",
-    "seed:admin": "tsx scripts/seed-admin.ts"
+    "seed:admin": "tsx scripts/seed-admin.ts",
+    "wipe:tickets": "tsx scripts/wipe-tickets.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
