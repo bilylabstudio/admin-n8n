@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formInboxGroups, type FormInboxGroup, labelForFormStatus } from '@/lib/forms';
+import { parseStoredReturnReason } from '@/lib/return-form-fields';
 import type { FormStatus } from '@prisma/client';
 
 type FormImage = {
@@ -77,6 +78,18 @@ export function FormsClient({ userEmail }: { userEmail: string }) {
   const selectedForm = useMemo(
     () => forms.find((f) => f.id === selectedId) || forms[0] || null,
     [forms, selectedId]
+  );
+  const selectedFormFields = useMemo(
+    () => parseStoredReturnReason(selectedForm?.reason),
+    [selectedForm?.reason]
+  );
+  const purchaseEmailValue = selectedForm?.purchaseEmail || selectedForm?.customerEmail || '';
+  const orderNumberValue = selectedForm?.orderNumber || '';
+  const hasStructuredReason = Boolean(
+    selectedFormFields.productAffected ||
+      selectedFormFields.returnReason ||
+      selectedFormFields.reasonDetail ||
+      selectedFormFields.caseExplanation
   );
 
   const loadList = useCallback(
@@ -191,6 +204,16 @@ export function FormsClient({ userEmail }: { userEmail: string }) {
       setError(err instanceof Error ? err.message : 'Error');
     } finally {
       setSubmitting(null);
+    }
+  };
+
+  const copyValue = async (label: string, value: string | null | undefined) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice(`${label} copiado`);
+    } catch {
+      setError(`No se pudo copiar ${label.toLowerCase()}.`);
     }
   };
 
@@ -349,6 +372,142 @@ export function FormsClient({ userEmail }: { userEmail: string }) {
                 </div>
               ) : null}
 
+              <section className="editor-panel">
+                <div className="editor-heading">
+                  <h3>Datos del formulario</h3>
+                </div>
+                <div style={{ display: 'grid', gap: 10 }}>
+                  {[
+                    { label: 'Email de compra', value: purchaseEmailValue, copy: true },
+                    { label: 'Numero de pedido', value: orderNumberValue, copy: true },
+                    { label: 'Producto afectado', value: selectedFormFields.productAffected || '-' },
+                    { label: 'Motivo de devolucion', value: selectedFormFields.returnReason || '-' },
+                    { label: 'Detalle del motivo', value: selectedFormFields.reasonDetail || '-' },
+                    { label: 'Explicacion del caso', value: selectedFormFields.caseExplanation || '-' }
+                  ].map((row) => (
+                    <div
+                      key={row.label}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: '150px minmax(0, 1fr) auto',
+                        gap: 10,
+                        alignItems: 'start',
+                        borderBottom: '1px solid var(--line-soft)',
+                        paddingBottom: 8
+                      }}
+                    >
+                      <strong style={{ color: 'var(--ink-muted)', fontSize: 12 }}>{row.label}</strong>
+                      <span style={{ color: 'var(--ink-soft)', whiteSpace: 'pre-wrap', minWidth: 0 }}>
+                        {row.value || '-'}
+                      </span>
+                      {row.copy ? (
+                        <button
+                          className="copy-btn"
+                          type="button"
+                          disabled={!row.value}
+                          onClick={() => copyValue(row.label, row.value)}
+                        >
+                          Copiar
+                        </button>
+                      ) : (
+                        <span />
+                      )}
+                    </div>
+                  ))}
+
+                  {!hasStructuredReason && selectedForm.reason ? (
+                    <div style={{ display: 'grid', gap: 6 }}>
+                      <strong style={{ color: 'var(--ink-muted)', fontSize: 12 }}>
+                        Motivo registrado
+                      </strong>
+                      <p style={{ margin: 0, color: 'var(--ink-soft)', whiteSpace: 'pre-wrap' }}>
+                        {selectedForm.reason}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="editor-panel">
+                <div className="editor-heading">
+                  <h3>Fotos o evidencia</h3>
+                  <span>{selectedForm.images.length} archivo(s)</span>
+                </div>
+                {selectedForm.images.length === 0 ? (
+                  <span style={{ color: 'var(--ink-muted)' }}>Sin fotos adjuntas.</span>
+                ) : (
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+                      gap: 10
+                    }}
+                  >
+                    {selectedForm.images.map((img) => {
+                      const imageUrl = `/api/forms/${selectedForm.id}/images/${img.id}`;
+                      return (
+                        <div
+                          key={img.id}
+                          style={{
+                            display: 'grid',
+                            gap: 6,
+                            border: '1px solid var(--line)',
+                            borderRadius: 6,
+                            padding: 8,
+                            background: 'var(--surface-raised)'
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setPreviewImage(img)}
+                            style={{
+                              padding: 0,
+                              border: '1px solid var(--line)',
+                              borderRadius: 6,
+                              background: 'var(--surface-inset)',
+                              cursor: 'pointer',
+                              overflow: 'hidden'
+                            }}
+                          >
+                            <img
+                              src={imageUrl}
+                              alt={img.filename}
+                              style={{
+                                width: '100%',
+                                aspectRatio: '1 / 1',
+                                objectFit: 'cover',
+                                display: 'block'
+                              }}
+                            />
+                          </button>
+                          <small
+                            style={{
+                              color: 'var(--ink-muted)',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
+                            }}
+                            title={img.filename}
+                          >
+                            {img.filename}
+                          </small>
+                          <a
+                            className="copy-btn"
+                            href={imageUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                            style={{ textAlign: 'center' }}
+                          >
+                            Abrir imagen
+                          </a>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
+              {false ? (
               <div className="review-grid">
                 <article className="message-block">
                   <div className="message-block-header">
@@ -396,6 +555,7 @@ export function FormsClient({ userEmail }: { userEmail: string }) {
                   </div>
                 </article>
               </div>
+              ) : null}
 
               <section className="editor-panel">
                 <div className="editor-heading">

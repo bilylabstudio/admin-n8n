@@ -17,6 +17,16 @@ export type ReturnFormValidationError =
 
 export const STATIC_RETURN_FORM_DEDUPE_STATUSES = ['submitted'] as const;
 
+const STORED_REASON_LABELS: {
+  key: keyof Pick<ReturnFormInput, 'productAffected' | 'returnReason' | 'reasonDetail' | 'caseExplanation'>;
+  label: string;
+}[] = [
+  { key: 'productAffected', label: 'Producto afectado:' },
+  { key: 'returnReason', label: 'Motivo de devolucion:' },
+  { key: 'reasonDetail', label: 'Detalle del motivo:' },
+  { key: 'caseExplanation', label: 'Explicacion del caso:' }
+];
+
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const CASE_EXPLANATION_MIN_LENGTH = 10;
 
@@ -52,4 +62,27 @@ export function formatReturnReason(input: ReturnFormInput): string {
     `Detalle del motivo: ${input.reasonDetail}`,
     `Explicacion del caso: ${input.caseExplanation}`
   ].join('\n\n');
+}
+
+export function parseStoredReturnReason(
+  reason: string | null | undefined
+): Partial<Pick<ReturnFormInput, 'productAffected' | 'returnReason' | 'reasonDetail' | 'caseExplanation'>> {
+  const text = String(reason ?? '');
+  const parsed: Partial<
+    Pick<ReturnFormInput, 'productAffected' | 'returnReason' | 'reasonDetail' | 'caseExplanation'>
+  > = {};
+
+  for (const item of STORED_REASON_LABELS) {
+    const start = text.indexOf(item.label);
+    if (start === -1) continue;
+
+    const valueStart = start + item.label.length;
+    const nextLabelStart = STORED_REASON_LABELS.map((candidate) => text.indexOf(candidate.label, valueStart))
+      .filter((idx) => idx > valueStart)
+      .sort((a, b) => a - b)[0];
+
+    parsed[item.key] = text.slice(valueStart, nextLabelStart ?? text.length).trim();
+  }
+
+  return parsed;
 }
