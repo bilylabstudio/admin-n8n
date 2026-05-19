@@ -21,11 +21,21 @@ function interpolate(template: string, vars: FormTemplateVars): string {
 const templates: Record<FormTemplateKey, string> = {
   form_devolucion_aprobada: `¡Hola {nombre}! 💚
 
-Hemos validado tu solicitud para el pedido #{orderNumber}. Procedemos con la devolución.
+Hemos revisado y aprobado tu solicitud para el pedido {orderNumber}.
 
-En las próximas 48 horas recibirás un email con las instrucciones para enviar el producto y los detalles del reembolso.
+Puedes enviar el producto a la siguiente dirección:
 
-Gracias por tu paciencia.`,
+📍 Centro Empresarial Miniparc 1
+Calle de la Azalea 1
+Edificio F, Planta 1
+Oficinas Chic and Love
+28109 Alcobendas, Madrid
+
+Por favor, envíalo bien cerrado y protegido para que llegue en buen estado.
+
+En cuanto lo recibamos y revisemos, gestionaremos el reembolso correspondiente.
+
+Gracias por tu paciencia. Un abrazo 💚`,
 
   form_devolucion_rechazada: `Hola {nombre},
 
