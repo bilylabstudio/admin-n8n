@@ -12,10 +12,12 @@ type SelectedFile = { file: File; sizeKb: number };
 
 export function FormClient() {
   const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [orderNumber, setOrderNumber] = useState('');
   const [purchaseEmail, setPurchaseEmail] = useState('');
-  const [reason, setReason] = useState('');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [productAffected, setProductAffected] = useState('');
+  const [returnReason, setReturnReason] = useState('');
+  const [reasonDetail, setReasonDetail] = useState('');
+  const [caseExplanation, setCaseExplanation] = useState('');
   const [files, setFiles] = useState<SelectedFile[]>([]);
   const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -26,7 +28,7 @@ export function FormClient() {
     const next: SelectedFile[] = [...files];
     for (const file of Array.from(incoming)) {
       if (next.length >= MAX_FILES) {
-        setError(`Máximo ${MAX_FILES} archivos.`);
+        setError(`Maximo ${MAX_FILES} archivos.`);
         break;
       }
       if (file.size > MAX_BYTES) {
@@ -50,26 +52,44 @@ export function FormClient() {
     e.preventDefault();
     setError('');
 
-    if (!EMAIL_RE.test(email.trim())) {
-      setError('Email inválido.');
+    if (!EMAIL_RE.test(purchaseEmail.trim())) {
+      setError('El email de compra no parece valido.');
       return;
     }
-    if (orderNumber.trim().length === 0) {
-      setError('Falta el número de pedido.');
+    if (!orderNumber.trim()) {
+      setError('Falta el numero de pedido.');
       return;
     }
-    if (reason.trim().length < 10) {
-      setError('Cuéntanos el motivo con un poco más de detalle (mínimo 10 caracteres).');
+    if (!productAffected.trim()) {
+      setError('Falta el producto afectado.');
+      return;
+    }
+    if (!returnReason.trim()) {
+      setError('Falta el motivo de devolucion.');
+      return;
+    }
+    if (!reasonDetail.trim()) {
+      setError('Falta el detalle del motivo.');
+      return;
+    }
+    if (caseExplanation.trim().length < 10) {
+      setError('Explica el caso con un poco mas de detalle.');
+      return;
+    }
+    if (files.length === 0) {
+      setError('Adjunta al menos una foto o evidencia.');
       return;
     }
 
     setSubmitting(true);
     try {
       const body = new FormData();
-      body.set('email', email.trim().toLowerCase());
+      body.set('purchaseEmail', purchaseEmail.trim().toLowerCase());
       body.set('orderNumber', orderNumber.trim());
-      body.set('purchaseEmail', purchaseEmail.trim());
-      body.set('reason', reason.trim());
+      body.set('productAffected', productAffected.trim());
+      body.set('returnReason', returnReason.trim());
+      body.set('reasonDetail', reasonDetail.trim());
+      body.set('caseExplanation', caseExplanation.trim());
       body.set('_hp', honeypot);
       for (const f of files) body.append('files', f.file);
 
@@ -94,12 +114,12 @@ export function FormClient() {
   return (
     <form className="public-form" onSubmit={submit} noValidate>
       <label className="public-form-field">
-        <span>Email *</span>
+        <span>Email de compra *</span>
         <input
           type="email"
-          name="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          name="purchaseEmail"
+          value={purchaseEmail}
+          onChange={(e) => setPurchaseEmail(e.target.value)}
           placeholder="tu@email.com"
           autoComplete="email"
           required
@@ -107,7 +127,7 @@ export function FormClient() {
       </label>
 
       <label className="public-form-field">
-        <span>Número de pedido *</span>
+        <span>Numero de pedido *</span>
         <input
           name="orderNumber"
           value={orderNumber}
@@ -119,31 +139,55 @@ export function FormClient() {
       </label>
 
       <label className="public-form-field">
-        <span>Email con que compraste (si es distinto)</span>
+        <span>Producto afectado *</span>
         <input
-          type="email"
-          name="purchaseEmail"
-          value={purchaseEmail}
-          onChange={(e) => setPurchaseEmail(e.target.value)}
-          placeholder="opcional"
+          name="productAffected"
+          value={productAffected}
+          onChange={(e) => setProductAffected(e.target.value)}
+          placeholder="Nombre del producto"
           autoComplete="off"
+          required
         />
       </label>
 
       <label className="public-form-field">
-        <span>Motivo de la devolución *</span>
+        <span>Motivo de devolucion *</span>
+        <input
+          name="returnReason"
+          value={returnReason}
+          onChange={(e) => setReturnReason(e.target.value)}
+          placeholder="Producto danado, equivocado, incompleto..."
+          autoComplete="off"
+          required
+        />
+      </label>
+
+      <label className="public-form-field">
+        <span>Detalle del motivo *</span>
         <textarea
-          name="reason"
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
+          name="reasonDetail"
+          value={reasonDetail}
+          onChange={(e) => setReasonDetail(e.target.value)}
+          rows={4}
+          placeholder="Describe el problema principal"
+          required
+        />
+      </label>
+
+      <label className="public-form-field">
+        <span>Explicacion del caso *</span>
+        <textarea
+          name="caseExplanation"
+          value={caseExplanation}
+          onChange={(e) => setCaseExplanation(e.target.value)}
           rows={5}
-          placeholder="Describe qué pasó con el producto"
+          placeholder="Cuentanos que paso, cuando lo notaste y cualquier detalle util"
           required
         />
       </label>
 
       <div className="public-form-field">
-        <span>Fotos del producto (máx 3 · 5 MB c/u)</span>
+        <span>Fotos o evidencia *</span>
         <input
           type="file"
           multiple
@@ -153,9 +197,13 @@ export function FormClient() {
         {files.length > 0 ? (
           <ul className="public-form-files">
             {files.map((f, i) => (
-              <li key={i}>
-                <span>{f.file.name} · {f.sizeKb} KB</span>
-                <button type="button" onClick={() => removeFile(i)}>Quitar</button>
+              <li key={`${f.file.name}-${i}`}>
+                <span>
+                  {f.file.name} - {f.sizeKb} KB
+                </span>
+                <button type="button" onClick={() => removeFile(i)}>
+                  Quitar
+                </button>
               </li>
             ))}
           </ul>
@@ -182,7 +230,7 @@ export function FormClient() {
       {error ? <p className="public-form-error">{error}</p> : null}
 
       <button className="public-form-submit" type="submit" disabled={submitting}>
-        {submitting ? 'Enviando…' : 'Enviar solicitud'}
+        {submitting ? 'Enviando...' : 'Enviar solicitud'}
       </button>
     </form>
   );
@@ -193,19 +241,27 @@ function translateError(code: string | undefined): string {
     case 'rate_limited':
       return 'Demasiados intentos. Espera unos minutos antes de volver a intentar.';
     case 'invalid_email':
-      return 'El email no parece válido.';
+      return 'El email de compra no parece valido.';
     case 'missing_order_number':
-      return 'Falta el número de pedido.';
-    case 'reason_too_short':
-      return 'El motivo debe tener al menos 10 caracteres.';
+      return 'Falta el numero de pedido.';
+    case 'missing_product_affected':
+      return 'Falta el producto afectado.';
+    case 'missing_return_reason':
+      return 'Falta el motivo de devolucion.';
+    case 'missing_reason_detail':
+      return 'Falta el detalle del motivo.';
+    case 'case_explanation_too_short':
+      return 'Explica el caso con un poco mas de detalle.';
+    case 'missing_evidence':
+      return 'Adjunta al menos una foto o evidencia.';
     case 'too_many_files':
-      return `Máximo ${MAX_FILES} archivos.`;
+      return `Maximo ${MAX_FILES} archivos.`;
     case 'file_too_large':
       return `Cada archivo debe pesar menos de ${MAX_BYTES / 1024 / 1024} MB.`;
     case 'unsupported_mime':
-      return 'Solo se admiten imágenes JPG, PNG, WEBP o HEIC.';
+      return 'Solo se admiten imagenes JPG, PNG, WEBP o HEIC.';
     case 'total_size_exceeded':
-      return 'El total de archivos supera el máximo permitido.';
+      return 'El total de archivos supera el maximo permitido.';
     default:
       return '';
   }

@@ -240,6 +240,28 @@ export function FormsClient({ userEmail }: { userEmail: string }) {
               </button>
             ))}
           </nav>
+          <div
+            style={{
+              display: 'grid',
+              gap: 8,
+              marginTop: 14,
+              paddingTop: 12,
+              borderTop: '1px solid var(--line)'
+            }}
+          >
+            <span style={{ color: 'var(--ink-muted)', fontSize: 11, fontWeight: 800 }}>
+              Formulario estatico
+            </span>
+            <a
+              className="ghost-button"
+              href="/forms/devolucion"
+              rel="noreferrer"
+              target="_blank"
+              style={{ display: 'inline-flex', justifyContent: 'center', textAlign: 'center' }}
+            >
+              Ver devolucion
+            </a>
+          </div>
         </aside>
 
         <section className="ticket-list-panel">

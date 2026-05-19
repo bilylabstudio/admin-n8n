@@ -10,11 +10,14 @@ import {
 } from '@/lib/form-uploads';
 import { rateLimit } from '@/lib/rate-limit';
 import { sendFormEmail } from '@/lib/form-emails';
+import {
+  formatReturnReason,
+  parseReturnFormInput,
+  validateReturnFormInput
+} from '@/lib/return-form-fields';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 export async function POST(req: NextRequest) {
   const ip = (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim() || 'unknown';
@@ -36,19 +39,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, form_id: 'hp_drop' });
   }
 
-  const email = String(formData.get('email') ?? '').trim().toLowerCase();
-  const orderNumber = String(formData.get('orderNumber') ?? '').trim();
-  const purchaseEmail = String(formData.get('purchaseEmail') ?? '').trim();
-  const reason = String(formData.get('reason') ?? '').trim();
+  const input = parseReturnFormInput(formData);
+  const validationError = validateReturnFormInput(input);
+  if (validationError) {
+    return NextResponse.json({ ok: false, error: validationError }, { status: 400 });
+  }
 
-  if (!EMAIL_RE.test(email)) {
-    return NextResponse.json({ ok: false, error: 'invalid_email' }, { status: 400 });
+  const fileEntries = formData.getAll('files').filter((v): v is File => v instanceof File);
+  if (fileEntries.length === 0) {
+    return NextResponse.json({ ok: false, error: 'missing_evidence' }, { status: 400 });
   }
-  if (!orderNumber) {
-    return NextResponse.json({ ok: false, error: 'missing_order_number' }, { status: 400 });
-  }
-  if (reason.length < 10) {
-    return NextResponse.json({ ok: false, error: 'reason_too_short' }, { status: 400 });
+  if (fileEntries.length > FORM_UPLOAD_LIMITS.MAX_FILES) {
+    return NextResponse.json({ ok: false, error: 'too_many_files' }, { status: 400 });
   }
 
   // Idempotency: if the same email submitted in the last 24h and we still have it
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const recent = await db.formSubmission.findFirst({
     where: {
-      customerEmail: email,
+      customerEmail: input.purchaseEmail,
       type: 'devolucion',
       status: { in: ['pending', 'submitted'] },
       createdAt: { gt: cutoff }
@@ -65,11 +67,6 @@ export async function POST(req: NextRequest) {
   });
   if (recent) {
     return NextResponse.json({ ok: true, form_id: recent.id, deduped: true });
-  }
-
-  const fileEntries = formData.getAll('files').filter((v): v is File => v instanceof File);
-  if (fileEntries.length > FORM_UPLOAD_LIMITS.MAX_FILES) {
-    return NextResponse.json({ ok: false, error: 'too_many_files' }, { status: 400 });
   }
 
   let validated;
@@ -90,10 +87,10 @@ export async function POST(req: NextRequest) {
     data: {
       token: generateFormToken(),
       type: 'devolucion',
-      customerEmail: email,
-      orderNumber,
-      purchaseEmail: purchaseEmail || null,
-      reason,
+      customerEmail: input.purchaseEmail,
+      orderNumber: input.orderNumber,
+      purchaseEmail: input.purchaseEmail,
+      reason: formatReturnReason(input),
       status: 'submitted',
       submittedAt: new Date(),
       ipAddress: ip,
