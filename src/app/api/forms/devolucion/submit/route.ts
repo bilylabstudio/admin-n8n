@@ -11,6 +11,7 @@ import {
 import { rateLimit } from '@/lib/rate-limit';
 import { sendFormEmail } from '@/lib/form-emails';
 import {
+  STATIC_RETURN_FORM_DEDUPE_STATUSES,
   formatReturnReason,
   parseReturnFormInput,
   validateReturnFormInput
@@ -53,14 +54,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'too_many_files' }, { status: 400 });
   }
 
-  // Idempotency: if the same email submitted in the last 24h and we still have it
-  // pending or submitted, return that existing form instead of creating a duplicate.
+  // Idempotency: if the same email submitted in the last 24h and is already visible
+  // in the admin inbox, return that existing form instead of creating a duplicate.
   const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const recent = await db.formSubmission.findFirst({
     where: {
       customerEmail: input.purchaseEmail,
       type: 'devolucion',
-      status: { in: ['pending', 'submitted'] },
+      status: { in: [...STATIC_RETURN_FORM_DEDUPE_STATUSES] },
       createdAt: { gt: cutoff }
     },
     orderBy: { createdAt: 'desc' }

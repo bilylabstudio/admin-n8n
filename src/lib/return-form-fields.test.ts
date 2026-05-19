@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  STATIC_RETURN_FORM_DEDUPE_STATUSES,
   formatReturnReason,
   parseReturnFormInput,
   validateReturnFormInput,
@@ -67,5 +68,12 @@ describe('formatReturnReason', () => {
     expect(formatted).toContain('Motivo de devolucion: Producto danado');
     expect(formatted).toContain('Detalle del motivo: El frasco llego abierto');
     expect(formatted).toContain('Explicacion del caso: La caja venia golpeada');
+  });
+});
+
+describe('STATIC_RETURN_FORM_DEDUPE_STATUSES', () => {
+  it('does not dedupe static submissions against invisible pending token rows', () => {
+    expect(STATIC_RETURN_FORM_DEDUPE_STATUSES).toEqual(['submitted']);
+    expect(STATIC_RETURN_FORM_DEDUPE_STATUSES).not.toContain('pending');
   });
 });

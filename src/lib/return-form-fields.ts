@@ -15,6 +15,8 @@ export type ReturnFormValidationError =
   | 'missing_reason_detail'
   | 'case_explanation_too_short';
 
+export const STATIC_RETURN_FORM_DEDUPE_STATUSES = ['submitted'] as const;
+
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const CASE_EXPLANATION_MIN_LENGTH = 10;
 
