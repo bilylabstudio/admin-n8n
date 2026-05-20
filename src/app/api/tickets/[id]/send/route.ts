@@ -2,7 +2,7 @@ import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { sendApprovedReply } from '@/lib/n8n';
 import { redirectToApp } from '@/lib/redirects';
-import { canReview } from '@/lib/status';
+import { canReview, isReplyEdited } from '@/lib/status';
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   const user = await requireUser();
@@ -14,13 +14,17 @@ export async function POST(request: Request, { params }: { params: { id: string 
     return redirectToApp(`/tickets/${params.id}?error=invalid_reply`);
   }
 
+  const edited = isReplyEdited(finalReply, ticket.aiReply);
+  const nextStatus = edited ? 'edited_sent' : 'approved_sent';
+  const approvalAction = edited ? 'edited' : 'approved';
+
   const result = await sendApprovedReply({
     ticket_id: ticket.id,
     to_email: ticket.customerEmail,
     subject: ticket.subject,
     final_reply: finalReply,
     approved_by: user.email,
-    approval_action: 'edited',
+    approval_action: approvalAction,
     in_reply_to_message_id: ticket.externalMessageId ?? undefined,
   });
 
@@ -45,7 +49,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   await db.ticket.update({
     where: { id: ticket.id },
     data: {
-      status: 'edited_sent',
+      status: nextStatus,
       finalReply,
       approvedByUserId: user.id,
       sentAt: result.sent_at ? new Date(result.sent_at) : new Date(),
@@ -58,10 +62,10 @@ export async function POST(request: Request, { params }: { params: { id: string 
     data: {
       ticketId: ticket.id,
       userId: user.id,
-      eventType: 'edited_sent',
+      eventType: nextStatus,
       beforeStatus: ticket.status,
-      afterStatus: 'edited_sent',
-      metadataJson: { ...result, edited: true }
+      afterStatus: nextStatus,
+      metadataJson: { ...result, edited }
     }
   });
 

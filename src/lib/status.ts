@@ -71,3 +71,11 @@ export function statusesForGroup(group: InboxGroup): TicketStatus[] {
 export function labelForStatus(status: TicketStatus): string {
   return statusLabels[status];
 }
+
+export function normalizeReply(text: string): string {
+  return text.trim().replace(/\s+/g, ' ');
+}
+
+export function isReplyEdited(draft: string, original: string | null | undefined): boolean {
+  return normalizeReply(draft) !== normalizeReply(original ?? '');
+}

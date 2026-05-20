@@ -53,21 +53,15 @@ export default async function TicketDetailPage({
         </div>
         <section className="panel" style={{ padding: 16, marginTop: 16 }}>
           <h3>Respuesta final</h3>
-          <form action={`/api/tickets/${ticket.id}/send-edited`} method="post">
+          <form action={`/api/tickets/${ticket.id}/send`} method="post">
             <textarea className="textarea" name="final_reply" defaultValue={ticket.finalReply || ticket.aiReply} disabled={!reviewable} />
             <div className="actions">
-              <button className="button success" type="submit" disabled={!reviewable}>Editar y enviar</button>
+              <button className="button success" type="submit" disabled={!reviewable}>Enviar</button>
             </div>
           </form>
           <div className="actions">
-            <form action={`/api/tickets/${ticket.id}/approve`} method="post">
-              <button className="button" type="submit" disabled={!reviewable}>Aprobar y enviar</button>
-            </form>
-            <form action={`/api/tickets/${ticket.id}/manual`} method="post">
-              <button className="button secondary" type="submit" disabled={!reviewable}>Responder manualmente</button>
-            </form>
             <form action={`/api/tickets/${ticket.id}/discard`} method="post">
-              <button className="button danger" type="submit" disabled={!reviewable}>Descartar</button>
+              <button className="button danger" type="submit" disabled={!reviewable}>Rechazar</button>
             </form>
           </div>
         </section>

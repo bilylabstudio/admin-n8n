@@ -56,7 +56,7 @@ type CustomerEntry = {
 
 type LoadReason = 'initial' | 'poll' | 'manual' | 'action';
 type ViewMode = 'tickets' | 'conversations';
-type SubmitAction = 'send-edited' | 'approve' | 'manual' | 'discard';
+type SubmitAction = 'send' | 'discard';
 
 const POLL_MS = 7000;
 const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
@@ -218,7 +218,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
     try {
       const init: RequestInit = { method: 'POST' };
-      if (action === 'send-edited') {
+      if (action === 'send') {
         init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
         init.body = new URLSearchParams({ final_reply: draft });
       }
@@ -227,7 +227,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       if (!response.ok) throw new Error('No se pudo completar la accion.');
 
       setDirty(false);
-      setNotice(action === 'send-edited' ? 'Respuesta enviada' : 'Ticket actualizado');
+      setNotice(action === 'send' ? 'Respuesta enviada' : 'Ticket actualizado');
 
       if (viewMode === 'conversations' && selectedCustomerEmail) {
         await Promise.all([loadConversation(selectedCustomerEmail), loadTickets('action')]);
@@ -569,25 +569,9 @@ function ConversationPane({
                           className="primary-action"
                           type="button"
                           disabled={!draft.trim() || submitting !== null}
-                          onClick={() => onSubmit('send-edited', ticket.id)}
+                          onClick={() => onSubmit('send', ticket.id)}
                         >
-                          {submitting === 'send-edited' ? 'Enviando...' : 'Editar y enviar'}
-                        </button>
-                        <button
-                          className="secondary-action"
-                          type="button"
-                          disabled={submitting !== null}
-                          onClick={() => onSubmit('approve', ticket.id)}
-                        >
-                          Aprobar sin cambios
-                        </button>
-                        <button
-                          className="secondary-action"
-                          type="button"
-                          disabled={submitting !== null}
-                          onClick={() => onSubmit('manual', ticket.id)}
-                        >
-                          Manual
+                          {submitting === 'send' ? 'Enviando...' : 'Enviar'}
                         </button>
                         <button
                           className="danger-action"
@@ -595,7 +579,7 @@ function ConversationPane({
                           disabled={submitting !== null}
                           onClick={() => onSubmit('discard', ticket.id)}
                         >
-                          Descartar
+                          Rechazar
                         </button>
                       </div>
                     </div>
@@ -740,25 +724,9 @@ function ReviewPane({
             className="primary-action"
             type="button"
             disabled={!reviewable || !draft.trim() || submitting !== null}
-            onClick={() => onSubmit('send-edited')}
+            onClick={() => onSubmit('send')}
           >
-            {submitting === 'send-edited' ? 'Enviando...' : 'Editar y enviar'}
-          </button>
-          <button
-            className="secondary-action"
-            type="button"
-            disabled={!reviewable || submitting !== null}
-            onClick={() => onSubmit('approve')}
-          >
-            Aprobar sin cambios
-          </button>
-          <button
-            className="secondary-action"
-            type="button"
-            disabled={!reviewable || submitting !== null}
-            onClick={() => onSubmit('manual')}
-          >
-            Manual
+            {submitting === 'send' ? 'Enviando...' : 'Enviar'}
           </button>
           <button
             className="danger-action"
@@ -766,7 +734,7 @@ function ReviewPane({
             disabled={!reviewable || submitting !== null}
             onClick={() => onSubmit('discard')}
           >
-            Descartar
+            Rechazar
           </button>
         </div>
       </section>
