@@ -13,5 +13,5 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const platform = url.searchParams.get('platform') || 'shopify';
   const cursor = await getSyncCursor(platform);
-  return NextResponse.json({ ok: true, platform, cursor });
+  return NextResponse.json({ ok: true, ...cursor });
 }

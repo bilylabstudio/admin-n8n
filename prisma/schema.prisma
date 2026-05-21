@@ -216,6 +216,7 @@ model PlatformSyncState {
   id             String    @id @default(cuid())
   platform       String    @unique
   lastUpdatedAt  DateTime?
+  lastExternalId String?
   lastSyncRunAt  DateTime?
   lastSyncStatus String?
   lastSyncError  String?

@@ -99,6 +99,7 @@ export async function upsertPlatformOrders(orders: PlatformOrderInput[]) {
 export const syncStateInputSchema = z.object({
   platform: z.string().min(1),
   last_updated_at: z.string().datetime().optional().nullable(),
+  last_external_id: z.string().optional().nullable(),
   last_sync_status: z.enum(['ok', 'failed']),
   last_sync_error: z.string().optional().nullable(),
   orders_imported: z.number().int().nonnegative().optional().default(0)
@@ -108,12 +109,14 @@ export type SyncStateInput = z.infer<typeof syncStateInputSchema>;
 
 export async function markSyncState(input: SyncStateInput) {
   const lastUpdatedAt = input.last_updated_at ? new Date(input.last_updated_at) : undefined;
+  const lastExternalId = input.last_external_id ?? undefined;
 
   return db.platformSyncState.upsert({
     where: { platform: input.platform },
     create: {
       platform: input.platform,
       lastUpdatedAt: lastUpdatedAt ?? null,
+      lastExternalId: lastExternalId ?? null,
       lastSyncRunAt: new Date(),
       lastSyncStatus: input.last_sync_status,
       lastSyncError: input.last_sync_error ?? null,
@@ -121,6 +124,7 @@ export async function markSyncState(input: SyncStateInput) {
     },
     update: {
       ...(lastUpdatedAt ? { lastUpdatedAt } : {}),
+      ...(lastExternalId !== undefined ? { lastExternalId } : {}),
       lastSyncRunAt: new Date(),
       lastSyncStatus: input.last_sync_status,
       lastSyncError: input.last_sync_error ?? null,
@@ -129,10 +133,21 @@ export async function markSyncState(input: SyncStateInput) {
   });
 }
 
-const DEFAULT_BACKFILL_CURSOR = '2026-01-01T00:00:00.000Z';
+const DEFAULT_BACKFILL_CREATED_AT_MIN = '2026-01-01T00:00:00.000Z';
 
-export async function getSyncCursor(platform: string): Promise<string> {
+export type SyncCursor = {
+  platform: string;
+  cursor: string;
+  since_id: string;
+  created_at_min: string;
+};
+
+export async function getSyncCursor(platform: string): Promise<SyncCursor> {
   const state = await db.platformSyncState.findUnique({ where: { platform } });
-  if (state?.lastUpdatedAt) return state.lastUpdatedAt.toISOString();
-  return DEFAULT_BACKFILL_CURSOR;
+  return {
+    platform,
+    cursor: state?.lastUpdatedAt?.toISOString() ?? DEFAULT_BACKFILL_CREATED_AT_MIN,
+    since_id: state?.lastExternalId ?? '0',
+    created_at_min: DEFAULT_BACKFILL_CREATED_AT_MIN
+  };
 }
