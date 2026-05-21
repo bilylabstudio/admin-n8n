@@ -313,9 +313,137 @@ export function SalesClient() {
                 <div className="empty-state">Sin ventas en el periodo.</div>
               )}
             </section>
+
+            <RawOrdersSection platform={platform} currency={currency} />
           </>
         )}
       </div>
     </main>
   );
+}
+
+type RawOrder = {
+  id: string;
+  platform: string;
+  externalOrderId: string;
+  orderNumber: string | null;
+  currency: string;
+  processedAt: string;
+  financialStatus: string;
+  fulfillmentStatus: string | null;
+  cancelledAt: string | null;
+  isTest: boolean;
+  totalPrice: number;
+  totalRefunded: number;
+  totalUnits: number;
+  customerEmail: string | null;
+  countryCode: string | null;
+  channel: string | null;
+  externalUpdatedAt: string;
+};
+
+function RawOrdersSection({ platform, currency }: { platform: Platform; currency: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [orders, setOrders] = useState<RawOrder[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/sales/orders?platform=${platform}&limit=2000`, { cache: 'no-store' });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar.');
+      setOrders(json.orders);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error');
+    } finally {
+      setLoading(false);
+    }
+  }, [platform]);
+
+  useEffect(() => {
+    if (expanded && orders === null) void load();
+  }, [expanded, orders, load]);
+
+  useEffect(() => {
+    setOrders(null);
+  }, [platform]);
+
+  return (
+    <section className="db-section panel">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <h2 className="db-section-title" style={{ margin: 0 }}>Detalle de pedidos</h2>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {expanded && orders ? (
+            <button className="ghost-button" type="button" onClick={() => void load()} disabled={loading}>
+              {loading ? 'Recargando...' : 'Recargar'}
+            </button>
+          ) : null}
+          <button className="ghost-button" type="button" onClick={() => setExpanded((v) => !v)}>
+            {expanded ? 'Ocultar' : `Ver pedidos en bruto${orders ? ` (${orders.length})` : ''}`}
+          </button>
+        </div>
+      </div>
+
+      {expanded ? (
+        <div style={{ marginTop: 12 }}>
+          {error ? <p style={{ color: 'var(--error-red)' }}>{error}</p> : null}
+          {loading && !orders ? <div className="empty-state" style={{ minHeight: 80 }}>Cargando pedidos...</div> : null}
+          {orders && orders.length === 0 ? <div className="empty-state">No hay pedidos guardados aún.</div> : null}
+          {orders && orders.length > 0 ? (
+            <>
+              <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
+                Mostrando los últimos {orders.length} pedidos ordenados por fecha. Tope: 2.000.
+              </p>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--neutral-border, #e5e7eb)' }}>
+                      <th style={{ padding: '8px 10px' }}>Fecha</th>
+                      <th style={{ padding: '8px 10px' }}>Plataforma</th>
+                      <th style={{ padding: '8px 10px' }}>Pedido</th>
+                      <th style={{ padding: '8px 10px' }}>Cliente</th>
+                      <th style={{ padding: '8px 10px' }}>País</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Reemb.</th>
+                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Uds.</th>
+                      <th style={{ padding: '8px 10px' }}>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {orders.map((o) => (
+                      <tr key={o.id} style={{ borderBottom: '1px solid var(--neutral-border, #f3f4f6)' }}>
+                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{formatFullDate(o.processedAt)}</td>
+                        <td style={{ padding: '6px 10px' }}>{o.platform}</td>
+                        <td style={{ padding: '6px 10px' }}>{o.orderNumber || o.externalOrderId}</td>
+                        <td style={{ padding: '6px 10px' }}>{o.customerEmail || '—'}</td>
+                        <td style={{ padding: '6px 10px' }}>{o.countryCode || '—'}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{formatMoney(o.totalPrice, o.currency || currency)}</td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right', color: o.totalRefunded > 0 ? 'var(--error-red)' : 'var(--ink-soft)' }}>
+                          {o.totalRefunded > 0 ? formatMoney(o.totalRefunded, o.currency || currency) : '—'}
+                        </td>
+                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{o.totalUnits}</td>
+                        <td style={{ padding: '6px 10px' }}>{o.financialStatus}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8 }}>
+                Más antiguo: {formatFullDate(orders[orders.length - 1].processedAt)} · Más reciente: {formatFullDate(orders[0].processedAt)}
+              </p>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function formatFullDate(iso: string) {
+  return new Intl.DateTimeFormat('es-ES', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+  }).format(new Date(iso));
 }
