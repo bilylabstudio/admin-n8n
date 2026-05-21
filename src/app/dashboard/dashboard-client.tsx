@@ -154,6 +154,7 @@ export function DashboardClient() {
               </button>
             ))}
           </div>
+          <a href="/ventas">Ventas</a>
           <a href="/">← Volver al inbox</a>
         </div>
       </header>
