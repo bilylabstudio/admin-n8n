@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { aggregate, sinceForPeriod, isPeriod, type AggregateInput } from './sales';
+import { aggregate, sinceForPeriod, isPeriod, type RawOrder } from './sales';
 
-function order(partial: Partial<AggregateInput> & { processedAt: Date }): AggregateInput {
+function order(partial: Partial<RawOrder> & { processedAt: string | Date }): RawOrder {
   return {
     platform: 'shopify',
     financialStatus: 'paid',
-    totalPrice: 100 as unknown as AggregateInput['totalPrice'],
-    totalRefunded: 0 as unknown as AggregateInput['totalRefunded'],
+    totalPrice: 100,
+    totalRefunded: 0,
     totalUnits: 1,
     currency: 'EUR',
     ...partial
@@ -53,10 +53,10 @@ describe('aggregate', () => {
   });
 
   it('computes gross, net, refund rate, AOV and units/order', () => {
-    const orders: AggregateInput[] = [
-      order({ processedAt: new Date('2026-05-10T10:00:00Z'), totalPrice: 100 as never, totalUnits: 2 }),
-      order({ processedAt: new Date('2026-05-11T11:00:00Z'), totalPrice: 50 as never, totalUnits: 1, totalRefunded: 50 as never, financialStatus: 'refunded' }),
-      order({ processedAt: new Date('2026-05-11T12:00:00Z'), totalPrice: 200 as never, totalUnits: 5 })
+    const orders: RawOrder[] = [
+      order({ processedAt: '2026-05-10T10:00:00Z', totalPrice: 100, totalUnits: 2 }),
+      order({ processedAt: '2026-05-11T11:00:00Z', totalPrice: 50, totalUnits: 1, totalRefunded: 50, financialStatus: 'refunded' }),
+      order({ processedAt: '2026-05-11T12:00:00Z', totalPrice: 200, totalUnits: 5 })
     ];
     const { kpis } = aggregate(orders);
     expect(kpis.totalOrders).toBe(3);
@@ -69,11 +69,20 @@ describe('aggregate', () => {
     expect(kpis.refundRate).toBe(33.33);
   });
 
+  it('accepts numeric values delivered as strings (n8n data tables)', () => {
+    const orders: RawOrder[] = [
+      order({ processedAt: '2026-05-10T10:00:00Z', totalPrice: '49.90' as unknown as number, totalRefunded: '0' as unknown as number, totalUnits: 2 })
+    ];
+    const { kpis } = aggregate(orders);
+    expect(kpis.grossRevenue).toBe(49.9);
+    expect(kpis.netRevenue).toBe(49.9);
+  });
+
   it('groups by day with date sorted ascending', () => {
-    const orders: AggregateInput[] = [
-      order({ processedAt: new Date('2026-05-11T11:00:00Z'), totalPrice: 50 as never, totalUnits: 1 }),
-      order({ processedAt: new Date('2026-05-10T10:00:00Z'), totalPrice: 100 as never, totalUnits: 2 }),
-      order({ processedAt: new Date('2026-05-11T12:00:00Z'), totalPrice: 200 as never, totalUnits: 5 })
+    const orders: RawOrder[] = [
+      order({ processedAt: '2026-05-11T11:00:00Z', totalPrice: 50, totalUnits: 1 }),
+      order({ processedAt: '2026-05-10T10:00:00Z', totalPrice: 100, totalUnits: 2 }),
+      order({ processedAt: '2026-05-11T12:00:00Z', totalPrice: 200, totalUnits: 5 })
     ];
     const { byDay } = aggregate(orders);
     expect(byDay).toEqual([
@@ -83,10 +92,10 @@ describe('aggregate', () => {
   });
 
   it('groups by platform sorted by revenue desc', () => {
-    const orders: AggregateInput[] = [
-      order({ platform: 'shopify', processedAt: new Date('2026-05-10T10:00:00Z'), totalPrice: 100 as never }),
-      order({ platform: 'amazon', processedAt: new Date('2026-05-10T11:00:00Z'), totalPrice: 500 as never }),
-      order({ platform: 'shopify', processedAt: new Date('2026-05-10T12:00:00Z'), totalPrice: 50 as never })
+    const orders: RawOrder[] = [
+      order({ platform: 'shopify', processedAt: '2026-05-10T10:00:00Z', totalPrice: 100 }),
+      order({ platform: 'amazon', processedAt: '2026-05-10T11:00:00Z', totalPrice: 500 }),
+      order({ platform: 'shopify', processedAt: '2026-05-10T12:00:00Z', totalPrice: 50 })
     ];
     const { byPlatform } = aggregate(orders);
     expect(byPlatform).toEqual([
@@ -96,9 +105,9 @@ describe('aggregate', () => {
   });
 
   it('counts a partially_refunded order as refunded even with refund amount 0', () => {
-    const orders: AggregateInput[] = [
-      order({ processedAt: new Date('2026-05-10T10:00:00Z'), financialStatus: 'partially_refunded' }),
-      order({ processedAt: new Date('2026-05-11T10:00:00Z'), financialStatus: 'paid' })
+    const orders: RawOrder[] = [
+      order({ processedAt: '2026-05-10T10:00:00Z', financialStatus: 'partially_refunded' }),
+      order({ processedAt: '2026-05-11T10:00:00Z', financialStatus: 'paid' })
     ];
     const { kpis } = aggregate(orders);
     expect(kpis.refundedOrders).toBe(1);
@@ -106,10 +115,10 @@ describe('aggregate', () => {
   });
 
   it('picks the most common currency when mixed', () => {
-    const orders: AggregateInput[] = [
-      order({ processedAt: new Date('2026-05-10T10:00:00Z'), currency: 'EUR' }),
-      order({ processedAt: new Date('2026-05-10T11:00:00Z'), currency: 'EUR' }),
-      order({ processedAt: new Date('2026-05-10T12:00:00Z'), currency: 'USD' })
+    const orders: RawOrder[] = [
+      order({ processedAt: '2026-05-10T10:00:00Z', currency: 'EUR' }),
+      order({ processedAt: '2026-05-10T11:00:00Z', currency: 'EUR' }),
+      order({ processedAt: '2026-05-10T12:00:00Z', currency: 'USD' })
     ];
     const { kpis } = aggregate(orders);
     expect(kpis.currency).toBe('EUR');
