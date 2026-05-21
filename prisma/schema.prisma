@@ -176,3 +176,48 @@ model FormImage {
 
   @@index([formId])
 }
+
+model PlatformOrder {
+  id                String    @id @default(cuid())
+  platform          String
+  externalOrderId   String
+  orderNumber       String?
+  currency          String
+
+  processedAt       DateTime
+  financialStatus   String
+  fulfillmentStatus String?
+  cancelledAt       DateTime?
+  isTest            Boolean   @default(false)
+
+  subtotal          Decimal   @db.Decimal(12, 2)
+  totalTax          Decimal   @db.Decimal(12, 2)
+  totalShipping     Decimal   @db.Decimal(12, 2)
+  totalDiscounts    Decimal   @db.Decimal(12, 2)
+  totalPrice        Decimal   @db.Decimal(12, 2)
+  totalRefunded     Decimal   @db.Decimal(12, 2) @default(0)
+
+  totalUnits        Int
+
+  customerEmail     String?
+  countryCode       String?
+  channel           String?
+
+  rawJson           Json?
+  externalUpdatedAt DateTime
+  syncedAt          DateTime  @default(now())
+
+  @@unique([platform, externalOrderId])
+  @@index([platform, processedAt])
+  @@index([processedAt])
+}
+
+model PlatformSyncState {
+  id             String    @id @default(cuid())
+  platform       String    @unique
+  lastUpdatedAt  DateTime?
+  lastSyncRunAt  DateTime?
+  lastSyncStatus String?
+  lastSyncError  String?
+  ordersImported Int       @default(0)
+}

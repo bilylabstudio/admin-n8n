@@ -1,22 +1,6 @@
+import type { PlatformOrder, PlatformSyncState } from '@prisma/client';
+
 export type Period = 'ytd' | '7d' | '30d' | '90d';
-
-export type RawOrder = {
-  platform: string;
-  processedAt: string | Date;
-  financialStatus: string;
-  totalPrice: number | string;
-  totalRefunded: number | string;
-  totalUnits: number;
-  currency: string;
-};
-
-export type RawSyncState = {
-  platform: string;
-  lastSyncRunAt?: string | Date | null;
-  lastSyncStatus?: string | null;
-  lastSyncError?: string | null;
-  ordersImported?: number;
-};
 
 export type SalesKpis = {
   grossRevenue: number;
@@ -50,6 +34,11 @@ export type SalesResponse = {
   byPlatform: Array<{ platform: string; orders: number; revenue: number }>;
 };
 
+export type AggregateInput = Pick<
+  PlatformOrder,
+  'platform' | 'processedAt' | 'financialStatus' | 'totalPrice' | 'totalRefunded' | 'totalUnits' | 'currency'
+>;
+
 export function isPeriod(value: string | null | undefined): value is Period {
   return value === 'ytd' || value === '7d' || value === '30d' || value === '90d';
 }
@@ -64,7 +53,7 @@ export function sinceForPeriod(period: Period, now: Date = new Date()): Date {
   return d;
 }
 
-export function aggregate(orders: RawOrder[]): {
+export function aggregate(orders: AggregateInput[]): {
   kpis: SalesKpis;
   byDay: SalesResponse['byDay'];
   byPlatform: SalesResponse['byPlatform'];
@@ -91,7 +80,7 @@ export function aggregate(orders: RawOrder[]): {
 
   const byDayMap = new Map<string, { orders: number; revenue: number; units: number }>();
   for (const o of orders) {
-    const date = toIsoDate(o.processedAt).slice(0, 10);
+    const date = o.processedAt.toISOString().slice(0, 10);
     const cur = byDayMap.get(date) || { orders: 0, revenue: 0, units: 0 };
     cur.orders += 1;
     cur.revenue += toNumber(o.totalPrice);
@@ -130,13 +119,13 @@ export function aggregate(orders: RawOrder[]): {
   };
 }
 
-export function viewSyncState(states: RawSyncState[]): SyncStateView[] {
+export function viewSyncState(states: PlatformSyncState[]): SyncStateView[] {
   return states.map((s) => ({
     platform: s.platform,
-    lastSyncRunAt: s.lastSyncRunAt ? toIsoDate(s.lastSyncRunAt) : null,
-    lastSyncStatus: s.lastSyncStatus ?? null,
-    lastSyncError: s.lastSyncError ?? null,
-    ordersImported: s.ordersImported ?? 0
+    lastSyncRunAt: s.lastSyncRunAt?.toISOString() ?? null,
+    lastSyncStatus: s.lastSyncStatus,
+    lastSyncError: s.lastSyncError,
+    ordersImported: s.ordersImported
   }));
 }
 
@@ -146,11 +135,10 @@ function sum<T>(list: T[], pick: (item: T) => number): number {
 
 function toNumber(value: unknown): number {
   if (typeof value === 'number') return value;
+  if (value && typeof value === 'object' && 'toNumber' in value && typeof (value as { toNumber: unknown }).toNumber === 'function') {
+    return (value as { toNumber: () => number }).toNumber();
+  }
   return Number(value ?? 0);
-}
-
-function toIsoDate(value: string | Date): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
 
 function round2(n: number): number {
