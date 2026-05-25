@@ -8,10 +8,30 @@ export type SendApprovedPayload = {
   approved_by: string;
   approval_action: 'approved' | 'edited';
   in_reply_to_message_id?: string;
+  imap_uid?: string;
+  imap_mailbox?: string;
+  message_id?: string;
+  references?: string;
+};
+
+export type SentMessagePayload = {
+  from: string;
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+  sent_at: string;
+  in_reply_to?: string;
+  references?: string;
 };
 
 export type N8nSendResult =
-  | { ok: true; provider_message_id?: string; sent_at?: string }
+  | {
+      ok: true;
+      provider_message_id?: string;
+      sent_at?: string;
+      sent_message?: SentMessagePayload;
+    }
   | { ok: false; error: string; message?: string };
 
 export async function sendApprovedReply(payload: SendApprovedPayload): Promise<N8nSendResult> {

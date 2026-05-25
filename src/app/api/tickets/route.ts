@@ -86,6 +86,12 @@ export async function GET(request: Request) {
       status: ticket.status,
       sendError: ticket.sendError,
       sentAt: ticket.sentAt?.toISOString() || null,
+      imapUid: ticket.imapUid,
+      imapMailbox: ticket.imapMailbox,
+      seenSyncedAt: ticket.seenSyncedAt?.toISOString() || null,
+      answeredSyncedAt: ticket.answeredSyncedAt?.toISOString() || null,
+      sentFolderSyncedAt: ticket.sentFolderSyncedAt?.toISOString() || null,
+      webmailSyncError: ticket.webmailSyncError,
       updatedAt: ticket.updatedAt.toISOString(),
       auditEvents: ticket.auditEvents.map((event) => ({
         id: event.id,

@@ -14,7 +14,12 @@ export const ingestTicketSchema = z.object({
   intent: z.string().optional().default(''),
   risk_flags: z.string().optional().default(''),
   escalation_recommended: z.boolean().optional().default(false),
-  source: z.string().optional().default('webmail')
+  source: z.string().optional().default('webmail'),
+  imap_uid: z.string().optional().default(''),
+  imap_mailbox: z.string().optional().default(''),
+  message_id: z.string().optional().default(''),
+  in_reply_to: z.string().optional().default(''),
+  references: z.string().optional().default('')
 });
 
 export type IngestTicketInput = z.infer<typeof ingestTicketSchema>;
@@ -44,8 +49,14 @@ export async function ingestTicket(input: IngestTicketInput) {
       intent: input.intent,
       riskFlags: input.risk_flags,
       escalationRecommended: input.escalation_recommended,
+      imapUid: input.imap_uid || null,
+      imapMailbox: input.imap_mailbox || null,
+      messageId: input.message_id || null,
+      inReplyTo: input.in_reply_to || null,
+      references: input.references || null,
       status: nextStatus,
-      sendError: null
+      sendError: null,
+      webmailSyncError: null
     },
     create: {
       externalMessageId: input.external_message_id,
@@ -60,6 +71,12 @@ export async function ingestTicket(input: IngestTicketInput) {
       intent: input.intent,
       riskFlags: input.risk_flags,
       escalationRecommended: input.escalation_recommended,
+      imapUid: input.imap_uid || null,
+      imapMailbox: input.imap_mailbox || null,
+      messageId: input.message_id || null,
+      inReplyTo: input.in_reply_to || null,
+      references: input.references || null,
+      webmailSyncError: null,
       status: nextStatus
     }
   });

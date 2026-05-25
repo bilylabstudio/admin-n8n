@@ -90,6 +90,16 @@ model Ticket {
   approvedByUserId      String?
   sentAt                DateTime?
   providerMessageId     String?
+  imapUid               String?
+  imapMailbox           String?
+  messageId             String?
+  inReplyTo             String?
+  references            String?
+  seenSyncedAt          DateTime?
+  answeredSyncedAt      DateTime?
+  sentFolderSyncedAt    DateTime?
+  webmailSyncError      String?
+  sentMessageJson       Json?
   sendError             String?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
@@ -100,6 +110,9 @@ model Ticket {
 
   @@index([status, receivedAt])
   @@index([customerEmail])
+  @@index([imapMailbox, imapUid])
+  @@index([seenSyncedAt])
+  @@index([answeredSyncedAt])
 }
 
 model BlockedEmail {

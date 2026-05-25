@@ -23,6 +23,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     ticket_id: ticket.id,
-    status: ticket.status
+    status: ticket.status,
+    webmail_metadata_stored: Boolean(ticket.imapUid && ticket.imapMailbox)
   });
 }

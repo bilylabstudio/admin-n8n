@@ -44,6 +44,12 @@ export async function GET(
       escalationRecommended: t.escalationRecommended,
       status: t.status,
       sendError: t.sendError,
+      imapUid: t.imapUid,
+      imapMailbox: t.imapMailbox,
+      seenSyncedAt: t.seenSyncedAt?.toISOString() || null,
+      answeredSyncedAt: t.answeredSyncedAt?.toISOString() || null,
+      sentFolderSyncedAt: t.sentFolderSyncedAt?.toISOString() || null,
+      webmailSyncError: t.webmailSyncError,
       updatedAt: t.updatedAt.toISOString(),
       auditEvents: t.auditEvents.map((e) => ({
         id: e.id,

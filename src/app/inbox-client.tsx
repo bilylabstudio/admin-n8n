@@ -33,6 +33,12 @@ type Ticket = {
   escalationRecommended: boolean;
   status: TicketStatus;
   sendError: string | null;
+  imapUid: string | null;
+  imapMailbox: string | null;
+  seenSyncedAt: string | null;
+  answeredSyncedAt: string | null;
+  sentFolderSyncedAt: string | null;
+  webmailSyncError: string | null;
   updatedAt: string;
   auditEvents: TicketEvent[];
 };
@@ -151,6 +157,19 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     [activeGroup, query]
   );
 
+  const markTicketSeen = useCallback(async (ticket: Ticket) => {
+    if (!ticket.imapUid || ticket.seenSyncedAt) return;
+    try {
+      await fetch(`/api/tickets/${ticket.id}/webmail-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'seen' })
+      });
+    } catch {
+      // El ticket sigue siendo usable aunque falle la marca de lectura en webmail.
+    }
+  }, []);
+
   const loadConversation = useCallback(async (email: string) => {
     setSelectedCustomerEmail(email);
     setConversationLoading(true);
@@ -167,6 +186,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           setSelectedId(firstPending.id);
           setDraft(firstPending.finalReply || firstPending.aiReply || '');
           setDirty(false);
+          void markTicketSeen(firstPending);
         }
         setMobilePanel('detail');
       }
@@ -175,7 +195,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     } finally {
       setConversationLoading(false);
     }
-  }, []);
+  }, [markTicketSeen]);
 
   useEffect(() => {
     knownIds.current = new Set();
@@ -199,6 +219,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setDraft(ticket.finalReply || ticket.aiReply || '');
     setDirty(false);
     setNotice('');
+    void markTicketSeen(ticket);
     setMobilePanel('detail');
   };
 
@@ -615,6 +636,11 @@ function ConversationPane({
                     </span>
                     {adminText ? <CopyButton text={adminText} /> : null}
                   </div>
+                  <div className="bubble-tags">
+                    {ticket.answeredSyncedAt ? <em>Respondido en webmail</em> : null}
+                    {ticket.sentFolderSyncedAt ? <em>En enviados</em> : null}
+                    {ticket.webmailSyncError ? <b>Sync webmail pendiente</b> : null}
+                  </div>
                   <p className="bubble-text">{adminText || 'Sin texto registrado'}</p>
                 </div>
               )}
@@ -673,6 +699,17 @@ function ReviewPane({
         {ticket.category ? <span>{ticket.category}</span> : null}
         {ticket.intent ? <span>{ticket.intent}</span> : null}
         {ticket.escalationRecommended ? <strong>Escalar</strong> : null}
+      </div>
+
+      <div className="detail-strip">
+        {ticket.seenSyncedAt ? (
+          <span>Leido en webmail</span>
+        ) : ticket.imapUid ? (
+          <span>Lectura webmail pendiente</span>
+        ) : null}
+        {ticket.answeredSyncedAt ? <span>Respondido en webmail</span> : null}
+        {ticket.sentFolderSyncedAt ? <span>Copia en enviados</span> : null}
+        {ticket.webmailSyncError ? <strong>Sync webmail pendiente</strong> : null}
       </div>
 
       {ticket.escalationRecommended ? (
