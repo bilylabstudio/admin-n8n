@@ -243,6 +243,7 @@ button {
 .list-toolbar {
   min-height: 70px;
   align-items: flex-end;
+  flex-wrap: wrap;
   padding: 12px;
   border-bottom: 1px solid var(--line);
 }
@@ -390,10 +391,15 @@ button {
 .row-tags {
   justify-content: flex-start;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .row-tags em,
 .row-tags b {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 3px 7px;
   background: var(--muted-bg);
@@ -769,14 +775,16 @@ button {
 
 /* ── View mode toggle ───────────────────────────────────── */
 .list-toolbar .search-field {
-  flex: 1 1 auto;
+  flex: 1 1 190px;
   min-width: 0;
+  order: 1;
 }
 
 .view-toggle {
   display: flex;
   gap: 3px;
   flex-shrink: 0;
+  order: 2;
 }
 
 .view-toggle-btn {
@@ -801,6 +809,8 @@ button {
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+  order: 3;
+  padding-top: 2px;
 }
 
 .tag-filter-btn {
@@ -827,12 +837,20 @@ button {
 .ticket-tag {
   display: inline-flex;
   align-items: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   border-radius: 999px;
   padding: 3px 7px;
   font-size: 11px;
   font-style: normal;
   font-weight: 800;
   line-height: 1.1;
+}
+
+.list-toolbar .live-notice {
+  order: 4;
 }
 
 .ticket-tag.tag-danger {
