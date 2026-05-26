@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { inboxGroups, isInboxGroup, statusesForGroup } from '@/lib/status';
+import { getTicketTags } from '@/lib/ticket-tags';
 
 export const dynamic = 'force-dynamic';
 
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
       category: ticket.category,
       intent: ticket.intent,
       riskFlags: ticket.riskFlags,
+      tags: getTicketTags(ticket),
       escalationRecommended: ticket.escalationRecommended,
       status: ticket.status,
       sendError: ticket.sendError,

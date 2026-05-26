@@ -795,6 +795,66 @@ button {
   color: var(--gummy-teal);
 }
 
+.tag-filter {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tag-filter-btn {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.tag-filter-btn:hover,
+.tag-filter-btn.active {
+  border-color: var(--gummy-teal);
+  color: var(--gummy-teal);
+}
+
+.tag-filter-btn.active {
+  background: rgba(99, 178, 183, 0.13);
+}
+
+.ticket-tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.ticket-tag.tag-danger {
+  background: var(--error-bg);
+  color: var(--error-red);
+}
+
+.ticket-tag.tag-warning {
+  background: var(--review-amber-bg);
+  color: var(--review-amber);
+}
+
+.ticket-tag.tag-info {
+  background: rgba(99, 178, 183, 0.16);
+  color: #347d83;
+}
+
+.ticket-tag.tag-neutral {
+  background: var(--manual-bg);
+  color: var(--manual-violet);
+}
+
 /* ── Pending badge on customer row ──────────────────────── */
 .pending-badge {
   display: inline-flex;

@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "test": "vitest run --environment node src/lib/status.test.ts src/lib/auth.test.ts src/lib/forms.test.ts src/lib/form-uploads.test.ts src/lib/return-form-fields.test.ts src/lib/sales.test.ts src/lib/tickets.test.ts src/lib/webmail-sync.test.ts",
+    "test": "vitest run --environment node src/lib/status.test.ts src/lib/auth.test.ts src/lib/forms.test.ts src/lib/form-uploads.test.ts src/lib/return-form-fields.test.ts src/lib/sales.test.ts src/lib/tickets.test.ts src/lib/webmail-sync.test.ts src/lib/ticket-tags.test.ts",
     "cleanup:expired-forms": "tsx scripts/cleanup-expired-forms.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",

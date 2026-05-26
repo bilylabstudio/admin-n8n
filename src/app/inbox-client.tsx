@@ -18,6 +18,14 @@ type TicketEvent = {
   userEmail: string | null;
 };
 
+type TicketTag = {
+  id: 'escalate' | 'refund' | 'shipping' | 'product';
+  label: string;
+  tone: 'danger' | 'warning' | 'info' | 'neutral';
+};
+
+type ActiveTagFilter = 'all' | TicketTag['id'];
+
 type Ticket = {
   id: string;
   customerEmail: string;
@@ -30,6 +38,7 @@ type Ticket = {
   category: string | null;
   intent: string | null;
   riskFlags: string | null;
+  tags: TicketTag[];
   escalationRecommended: boolean;
   status: TicketStatus;
   sendError: string | null;
@@ -66,10 +75,18 @@ type SubmitAction = 'send' | 'discard';
 
 const POLL_MS = 7000;
 const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
+const tagFilterOptions: { id: ActiveTagFilter; label: string }[] = [
+  { id: 'all', label: 'Todos' },
+  { id: 'escalate', label: 'Escalar' },
+  { id: 'refund', label: 'Devolucion' },
+  { id: 'shipping', label: 'Problema envio' },
+  { id: 'product', label: 'Problema producto' }
+];
 
 export function InboxClient({ userEmail }: { userEmail: string }) {
   const [activeGroup, setActiveGroup] = useState<InboxGroup>('pending_review');
   const [query, setQuery] = useState('');
+  const [activeTagFilter, setActiveTagFilter] = useState<ActiveTagFilter>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -88,14 +105,19 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [mobilePanel, setMobilePanel] = useState<'list' | 'detail'>('list');
   const [conversationLoading, setConversationLoading] = useState(false);
 
+  const visibleTickets = useMemo(() => {
+    if (activeTagFilter === 'all') return tickets;
+    return tickets.filter((ticket) => ticket.tags.some((tag) => tag.id === activeTagFilter));
+  }, [activeTagFilter, tickets]);
+
   const selectedTicket = useMemo(
-    () => tickets.find((t) => t.id === selectedId) || tickets[0] || null,
-    [selectedId, tickets]
+    () => visibleTickets.find((t) => t.id === selectedId) || visibleTickets[0] || null,
+    [selectedId, visibleTickets]
   );
 
   const customers = useMemo<CustomerEntry[]>(() => {
     const map = new Map<string, CustomerEntry>();
-    for (const t of tickets) {
+    for (const t of visibleTickets) {
       const isPending = REVIEWABLE.includes(t.status);
       const existing = map.get(t.customerEmail);
       if (!existing) {
@@ -115,7 +137,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       }
     }
     return Array.from(map.values()).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
-  }, [tickets]);
+  }, [visibleTickets]);
 
   const loadTickets = useCallback(
     async (reason: LoadReason = 'manual') => {
@@ -213,6 +235,11 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     if (!selectedTicket || dirty || viewMode === 'conversations') return;
     setDraft(selectedTicket.finalReply || selectedTicket.aiReply || '');
   }, [dirty, selectedTicket, viewMode]);
+
+  useEffect(() => {
+    if (selectedId && visibleTickets.some((ticket) => ticket.id === selectedId)) return;
+    setSelectedId(visibleTickets[0]?.id || null);
+  }, [selectedId, visibleTickets]);
 
   const selectTicket = (ticket: Ticket) => {
     setSelectedId(ticket.id);
@@ -340,6 +367,18 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                 💬
               </button>
             </div>
+            <div className="tag-filter" aria-label="Filtrar por etiqueta">
+              {tagFilterOptions.map((tag) => (
+                <button
+                  className={activeTagFilter === tag.id ? 'tag-filter-btn active' : 'tag-filter-btn'}
+                  key={tag.id}
+                  type="button"
+                  onClick={() => setActiveTagFilter(tag.id)}
+                >
+                  {tag.label}
+                </button>
+              ))}
+            </div>
             {notice ? <p className="live-notice">{notice}</p> : null}
           </div>
 
@@ -357,10 +396,10 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
             {viewMode === 'tickets' ? (
               <>
-                {!loading && !tickets.length ? (
+                {!loading && !visibleTickets.length ? (
                   <div className="empty-state">No hay correos en este estado.</div>
                 ) : null}
-                {tickets.map((ticket) => (
+                {visibleTickets.map((ticket) => (
                   <button
                     className={
                       ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
@@ -379,9 +418,9 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                     </span>
                     <span className="row-preview">{preview(ticket.originalText)}</span>
                     <span className="row-tags">
+                      <TagBadges tags={ticket.tags} />
                       {ticket.category ? <em>{ticket.category}</em> : null}
                       {ticket.intent ? <em>{ticket.intent}</em> : null}
-                      {ticket.escalationRecommended ? <b className="tag-escalate">⚡ Escalar</b> : null}
                       {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
                     </span>
                   </button>
@@ -550,8 +589,9 @@ function ConversationPane({
                   <p className="bubble-subject">{ticket.subject}</p>
                 ) : null}
                 <p className="bubble-text">{ticket.originalText}</p>
-                {ticket.category || ticket.intent ? (
+                {ticket.tags.length || ticket.category || ticket.intent ? (
                   <div className="bubble-tags">
+                    <TagBadges tags={ticket.tags} />
                     {ticket.category ? <em>{ticket.category}</em> : null}
                     {ticket.intent ? <em>{ticket.intent}</em> : null}
                   </div>
@@ -698,7 +738,7 @@ function ReviewPane({
         <span>{formatDate(ticket.receivedAt)}</span>
         {ticket.category ? <span>{ticket.category}</span> : null}
         {ticket.intent ? <span>{ticket.intent}</span> : null}
-        {ticket.escalationRecommended ? <strong>Escalar</strong> : null}
+        <TagBadges tags={ticket.tags} />
       </div>
 
       <div className="detail-strip">
@@ -809,6 +849,19 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
+function TagBadges({ tags }: { tags: TicketTag[] }) {
+  if (!tags.length) return null;
+  return (
+    <>
+      {tags.map((tag) => (
+        <em className={`ticket-tag tag-${tag.tone}`} key={tag.id}>
+          {tag.label}
+        </em>
+      ))}
+    </>
+  );
+}
+
 function StatusBadge({ status }: { status: TicketStatus }) {
   return (
     <span className={`status-badge tone-${statusTone[status]}`}>{labelForStatus(status)}</span>
@@ -855,6 +908,7 @@ function fixTicket(t: Ticket): Ticket {
     aiReply: fixMojibake(t.aiReply) || '',
     finalReply: fixMojibake(t.finalReply) || '',
     category: fixMojibake(t.category),
-    intent: fixMojibake(t.intent)
+    intent: fixMojibake(t.intent),
+    tags: t.tags || []
   };
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { getTicketTags } from '@/lib/ticket-tags';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,6 +42,7 @@ export async function GET(
       category: t.category,
       intent: t.intent,
       riskFlags: t.riskFlags,
+      tags: getTicketTags(t),
       escalationRecommended: t.escalationRecommended,
       status: t.status,
       sendError: t.sendError,
