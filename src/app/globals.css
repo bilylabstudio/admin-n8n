@@ -150,6 +150,18 @@ button {
   grid-template-columns: 190px minmax(310px, 390px) minmax(0, 1fr);
 }
 
+.inbox-layout.status-rail-collapsed {
+  grid-template-columns: 44px minmax(310px, 390px) minmax(0, 1fr);
+}
+
+.inbox-layout.ticket-list-collapsed {
+  grid-template-columns: 190px 44px minmax(0, 1fr);
+}
+
+.inbox-layout.status-rail-collapsed.ticket-list-collapsed {
+  grid-template-columns: 44px 44px minmax(0, 1fr);
+}
+
 .status-rail,
 .ticket-list-panel,
 .review-pane {
@@ -160,6 +172,17 @@ button {
 
 .status-rail {
   padding: 12px;
+}
+
+.rail-content,
+.ticket-list-content {
+  min-height: 0;
+}
+
+.ticket-list-content {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
 }
 
 .rail-heading,
@@ -178,6 +201,64 @@ button {
   color: var(--ink-soft);
   font-size: 12px;
   font-weight: 700;
+}
+
+.rail-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collapse-toggle,
+.rail-expand-button,
+.list-expand-button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.collapse-toggle {
+  min-width: 30px;
+  min-height: 30px;
+  padding: 5px 7px;
+  line-height: 1;
+}
+
+.rail-expand-button,
+.list-expand-button {
+  display: none;
+  width: 100%;
+  min-height: 132px;
+  padding: 8px 4px;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+
+.collapse-toggle:hover,
+.rail-expand-button:hover,
+.list-expand-button:hover {
+  border-color: rgba(99, 178, 183, 0.5);
+  color: var(--gummy-teal);
+}
+
+.status-rail-collapsed .status-rail,
+.ticket-list-collapsed .ticket-list-panel {
+  padding: 8px 6px;
+}
+
+.status-rail-collapsed .rail-content,
+.ticket-list-collapsed .ticket-list-content {
+  display: none;
+}
+
+.status-rail-collapsed .rail-expand-button,
+.ticket-list-collapsed .list-expand-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ghost-button,
@@ -470,13 +551,22 @@ button {
   border-right: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 9px;
   overflow: auto;
-  padding: 16px;
+  padding: 12px 14px;
 }
 
 .review-header {
   align-items: flex-start;
+  gap: 8px;
+}
+
+.review-header .eyebrow {
+  margin-bottom: 2px;
+}
+
+.review-header h2 {
+  font-size: 19px;
 }
 
 .detail-strip {
@@ -492,6 +582,10 @@ button {
   border-radius: 999px;
   padding: 4px 8px;
   background: var(--surface-inset);
+}
+
+.compact-detail-strip {
+  margin-top: -2px;
 }
 
 .detail-strip strong {
@@ -513,7 +607,7 @@ button {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  gap: 10px;
 }
 
 .message-block,
@@ -526,9 +620,12 @@ button {
 }
 
 .message-block {
-  min-height: 180px;
-  overflow: auto;
-  padding: 12px;
+  min-height: clamp(190px, 30vh, 330px);
+  max-height: min(38vh, 420px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
 }
 
 .message-block h3,
@@ -537,7 +634,13 @@ button {
   font-size: 13px;
 }
 
-.message-block div {
+.message-block-body,
+.message-block > div:not(.message-block-header) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 12px 24px;
+  scroll-padding-block: 16px;
   white-space: pre-wrap;
   color: var(--ink-soft);
   line-height: 1.45;
@@ -549,8 +652,8 @@ button {
 
 .editor-panel {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  gap: 8px;
+  padding: 10px 12px 12px;
 }
 
 .editor-heading span {
@@ -561,10 +664,11 @@ button {
 
 .editor-panel textarea,
 .textarea {
-  min-height: 210px;
+  min-height: clamp(160px, 28vh, 280px);
   resize: vertical;
-  padding: 11px;
+  padding: 13px 13px 28px;
   line-height: 1.45;
+  scroll-padding-block: 18px;
 }
 
 .action-bar {
@@ -912,7 +1016,10 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 9px;
+  flex: 0 0 auto;
+  margin-bottom: 0;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .message-block-header h3 {
@@ -1427,6 +1534,16 @@ button {
     display: block;
   }
 
+  .status-rail-collapsed .rail-content,
+  .ticket-list-collapsed .ticket-list-content {
+    display: grid;
+  }
+
+  .status-rail-collapsed .rail-expand-button,
+  .ticket-list-collapsed .list-expand-button {
+    display: none;
+  }
+
   .mobile-list .detail-panel-wrapper {
     display: none;
   }
@@ -1491,6 +1608,12 @@ button {
     min-height: 0;
     display: flex;
     flex-direction: column;
+  }
+
+  .ticket-list-content {
+    display: flex;
+    flex-direction: column;
+    height: auto;
   }
 
   .ticket-list {

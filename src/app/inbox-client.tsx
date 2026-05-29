@@ -104,6 +104,8 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [conversationTickets, setConversationTickets] = useState<Ticket[]>([]);
   const [mobilePanel, setMobilePanel] = useState<'list' | 'detail'>('list');
   const [conversationLoading, setConversationLoading] = useState(false);
+  const [statusRailCollapsed, setStatusRailCollapsed] = useState(false);
+  const [ticketListCollapsed, setTicketListCollapsed] = useState(false);
 
   const visibleTickets = useMemo(() => {
     if (activeTagFilter === 'all') return tickets;
@@ -314,148 +316,197 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       </header>
 
       <section
-        className={`inbox-layout ${mobilePanel === 'detail' ? 'mobile-detail' : 'mobile-list'}`}
+        className={[
+          'inbox-layout',
+          mobilePanel === 'detail' ? 'mobile-detail' : 'mobile-list',
+          statusRailCollapsed ? 'status-rail-collapsed' : '',
+          ticketListCollapsed ? 'ticket-list-collapsed' : ''
+        ]
+          .filter(Boolean)
+          .join(' ')}
         aria-label="Bandeja de tickets"
       >
         <aside className="status-rail" aria-label="Estados">
-          <div className="rail-heading">
-            <span>Cola de bienestar</span>
-            <button className="ghost-button" type="button" onClick={() => loadTickets('manual')}>
-              Actualizar
-            </button>
+          <button
+            className="rail-expand-button"
+            type="button"
+            aria-label="Abrir estados"
+            title="Abrir estados"
+            onClick={() => setStatusRailCollapsed(false)}
+          >
+            Estados
+          </button>
+          <div className="rail-content">
+            <div className="rail-heading">
+              <span>Cola de bienestar</span>
+              <div className="rail-actions">
+                <button className="ghost-button" type="button" onClick={() => loadTickets('manual')}>
+                  Actualizar
+                </button>
+                <button
+                  className="collapse-toggle"
+                  type="button"
+                  aria-label="Ocultar estados"
+                  title="Ocultar estados"
+                  onClick={() => setStatusRailCollapsed(true)}
+                >
+                  &lt;&lt;
+                </button>
+              </div>
+            </div>
+            <nav className="status-nav">
+              {inboxGroups.map((group) => (
+                <button
+                  className={group.id === activeGroup ? 'status-link active' : 'status-link'}
+                  key={group.id}
+                  type="button"
+                  onClick={() => setActiveGroup(group.id)}
+                >
+                  <span>{group.label}</span>
+                  <strong>{counts[group.id] || 0}</strong>
+                </button>
+              ))}
+            </nav>
           </div>
-          <nav className="status-nav">
-            {inboxGroups.map((group) => (
-              <button
-                className={group.id === activeGroup ? 'status-link active' : 'status-link'}
-                key={group.id}
-                type="button"
-                onClick={() => setActiveGroup(group.id)}
-              >
-                <span>{group.label}</span>
-                <strong>{counts[group.id] || 0}</strong>
-              </button>
-            ))}
-          </nav>
         </aside>
 
         <section className="ticket-list-panel">
-          <div className="list-toolbar">
-            <label className="search-field">
-              <span>Buscar cliente</span>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Email, cliente o asunto"
-              />
-            </label>
-            <div className="view-toggle">
-              <button
-                className={viewMode === 'tickets' ? 'view-toggle-btn active' : 'view-toggle-btn'}
-                type="button"
-                onClick={() => switchViewMode('tickets')}
-                title="Lista de tickets"
-              >
-                ☰
-              </button>
-              <button
-                className={viewMode === 'conversations' ? 'view-toggle-btn active' : 'view-toggle-btn'}
-                type="button"
-                onClick={() => switchViewMode('conversations')}
-                title="Ver conversaciones"
-              >
-                💬
-              </button>
-            </div>
-            <div className="tag-filter" aria-label="Filtrar por etiqueta">
-              {tagFilterOptions.map((tag) => (
+          <button
+            className="list-expand-button"
+            type="button"
+            aria-label="Abrir mensajes"
+            title="Abrir mensajes"
+            onClick={() => setTicketListCollapsed(false)}
+          >
+            Mensajes
+          </button>
+          <div className="ticket-list-content">
+            <div className="list-toolbar">
+              <label className="search-field">
+                <span>Buscar cliente</span>
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Email, cliente o asunto"
+                />
+              </label>
+              <div className="view-toggle">
                 <button
-                  className={activeTagFilter === tag.id ? 'tag-filter-btn active' : 'tag-filter-btn'}
-                  key={tag.id}
+                  className={viewMode === 'tickets' ? 'view-toggle-btn active' : 'view-toggle-btn'}
                   type="button"
-                  onClick={() => setActiveTagFilter(tag.id)}
+                  onClick={() => switchViewMode('tickets')}
+                  title="Lista de tickets"
                 >
-                  {tag.label}
+                  L
                 </button>
-              ))}
-            </div>
-            {notice ? <p className="live-notice">{notice}</p> : null}
-          </div>
-
-          {error ? (
-            <div className="inline-error">
-              <span>{error}</span>
-              <button type="button" onClick={() => loadTickets('manual')}>
-                Reintentar
-              </button>
-            </div>
-          ) : null}
-
-          <div className="ticket-list" aria-live="polite">
-            {loading ? <div className="empty-state">Cargando correos...</div> : null}
-
-            {viewMode === 'tickets' ? (
-              <>
-                {!loading && !visibleTickets.length ? (
-                  <div className="empty-state">No hay correos en este estado.</div>
-                ) : null}
-                {visibleTickets.map((ticket) => (
+                <button
+                  className={viewMode === 'conversations' ? 'view-toggle-btn active' : 'view-toggle-btn'}
+                  type="button"
+                  onClick={() => switchViewMode('conversations')}
+                  title="Ver conversaciones"
+                >
+                  H
+                </button>
+                <button
+                  className="collapse-toggle"
+                  type="button"
+                  aria-label="Ocultar mensajes"
+                  title="Ocultar mensajes"
+                  onClick={() => setTicketListCollapsed(true)}
+                >
+                  &lt;&lt;
+                </button>
+              </div>
+              <div className="tag-filter" aria-label="Filtrar por etiqueta">
+                {tagFilterOptions.map((tag) => (
                   <button
-                    className={
-                      ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
-                    }
-                    key={ticket.id}
+                    className={activeTagFilter === tag.id ? 'tag-filter-btn active' : 'tag-filter-btn'}
+                    key={tag.id}
                     type="button"
-                    onClick={() => selectTicket(ticket)}
+                    onClick={() => setActiveTagFilter(tag.id)}
                   >
-                    <span className="row-main">
-                      <strong>{ticket.customerName || ticket.customerEmail}</strong>
-                      <small>{ticket.subject}</small>
-                    </span>
-                    <span className="row-meta">
-                      <StatusBadge status={ticket.status} />
-                      <time>{formatDate(ticket.receivedAt)}</time>
-                    </span>
-                    <span className="row-preview">{preview(ticket.originalText)}</span>
-                    <span className="row-tags">
-                      <TagBadges tags={ticket.tags} />
-                      {ticket.category ? <em>{ticket.category}</em> : null}
-                      {ticket.intent ? <em>{ticket.intent}</em> : null}
-                      {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
-                    </span>
+                    {tag.label}
                   </button>
                 ))}
-              </>
-            ) : (
-              <>
-                {!loading && !customers.length ? (
-                  <div className="empty-state">No hay clientes en este estado.</div>
-                ) : null}
-                {customers.map((customer) => (
-                  <button
-                    className={
-                      customer.email === selectedCustomerEmail
-                        ? 'ticket-row selected'
-                        : 'ticket-row'
-                    }
-                    key={customer.email}
-                    type="button"
-                    onClick={() => loadConversation(customer.email)}
-                  >
-                    <span className="row-main">
-                      <strong>{customer.name || customer.email}</strong>
-                      {customer.pendingCount > 0 ? (
-                        <span className="pending-badge">{customer.pendingCount}</span>
-                      ) : null}
-                    </span>
-                    <span className="row-meta">
-                      <time>{formatDate(customer.lastAt)}</time>
-                    </span>
-                    <span className="row-preview">{preview(customer.lastText)}</span>
-                  </button>
-                ))}
-              </>
-            )}
+              </div>
+              {notice ? <p className="live-notice">{notice}</p> : null}
+            </div>
+
+            {error ? (
+              <div className="inline-error">
+                <span>{error}</span>
+                <button type="button" onClick={() => loadTickets('manual')}>
+                  Reintentar
+                </button>
+              </div>
+            ) : null}
+
+            <div className="ticket-list" aria-live="polite">
+              {loading ? <div className="empty-state">Cargando correos...</div> : null}
+
+              {viewMode === 'tickets' ? (
+                <>
+                  {!loading && !visibleTickets.length ? (
+                    <div className="empty-state">No hay correos en este estado.</div>
+                  ) : null}
+                  {visibleTickets.map((ticket) => (
+                    <button
+                      className={
+                        ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
+                      }
+                      key={ticket.id}
+                      type="button"
+                      onClick={() => selectTicket(ticket)}
+                    >
+                      <span className="row-main">
+                        <strong>{ticket.customerName || ticket.customerEmail}</strong>
+                        <small>{ticket.subject}</small>
+                      </span>
+                      <span className="row-meta">
+                        <StatusBadge status={ticket.status} />
+                        <time>{formatDate(ticket.receivedAt)}</time>
+                      </span>
+                      <span className="row-preview">{preview(ticket.originalText)}</span>
+                      <span className="row-tags">
+                        <TagBadges tags={ticket.tags} />
+                        {ticket.category ? <em>{ticket.category}</em> : null}
+                        {ticket.intent ? <em>{ticket.intent}</em> : null}
+                        {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
+                      </span>
+                    </button>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {!loading && !customers.length ? (
+                    <div className="empty-state">No hay clientes en este estado.</div>
+                  ) : null}
+                  {customers.map((customer) => (
+                    <button
+                      className={
+                        customer.email === selectedCustomerEmail
+                          ? 'ticket-row selected'
+                          : 'ticket-row'
+                      }
+                      key={customer.email}
+                      type="button"
+                      onClick={() => loadConversation(customer.email)}
+                    >
+                      <span className="row-main">
+                        <strong>{customer.name || customer.email}</strong>
+                        {customer.pendingCount > 0 ? (
+                          <span className="pending-badge">{customer.pendingCount}</span>
+                        ) : null}
+                      </span>
+                      <span className="row-meta">
+                        <time>{formatDate(customer.lastAt)}</time>
+                      </span>
+                      <span className="row-preview">{preview(customer.lastText)}</span>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
           </div>
         </section>
 
@@ -734,14 +785,11 @@ function ReviewPane({
         <StatusBadge status={ticket.status} />
       </div>
 
-      <div className="detail-strip">
+      <div className="detail-strip compact-detail-strip">
         <span>{formatDate(ticket.receivedAt)}</span>
         {ticket.category ? <span>{ticket.category}</span> : null}
         {ticket.intent ? <span>{ticket.intent}</span> : null}
         <TagBadges tags={ticket.tags} />
-      </div>
-
-      <div className="detail-strip">
         {ticket.seenSyncedAt ? (
           <span>Leido en webmail</span>
         ) : ticket.imapUid ? (
@@ -775,14 +823,16 @@ function ReviewPane({
             <h3>Correo original</h3>
             <CopyButton text={ticket.originalText} />
           </div>
-          <div>{ticket.originalText}</div>
+          <div className="message-block-body">{ticket.originalText}</div>
         </article>
         <article className="message-block ai-block">
           <div className="message-block-header">
             <h3>Respuesta IA</h3>
             {ticket.aiReply ? <CopyButton text={ticket.aiReply} /> : null}
           </div>
-          <div>{ticket.aiReply || 'Este correo no tiene respuesta generada por IA.'}</div>
+          <div className="message-block-body">
+            {ticket.aiReply || 'Este correo no tiene respuesta generada por IA.'}
+          </div>
         </article>
       </div>
 
