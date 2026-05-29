@@ -49,6 +49,16 @@ enum FormStatus {
   discarded
 }
 
+enum ThreadMessageDirection {
+  inbound
+  outbound
+}
+
+enum ThreadMessageSource {
+  admin
+  webmail
+}
+
 model User {
   id              String           @id @default(cuid())
   email           String           @unique
@@ -107,12 +117,38 @@ model Ticket {
   approvedBy  User?            @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
   auditEvents AuditEvent[]
   forms       FormSubmission[]
+  threadMessages ThreadMessage[]
 
   @@index([status, receivedAt])
   @@index([customerEmail])
   @@index([imapMailbox, imapUid])
   @@index([seenSyncedAt])
   @@index([answeredSyncedAt])
+}
+
+model ThreadMessage {
+  id                String                 @id @default(cuid())
+  customerEmail     String
+  customerName      String?
+  ticketId          String?
+  direction         ThreadMessageDirection
+  source            ThreadMessageSource
+  subject           String
+  text              String
+  messageAt         DateTime
+  messageId         String?
+  imapUid           String?
+  imapMailbox       String?
+  providerMessageId String?
+  rawJson           Json?
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@index([customerEmail, messageAt])
+  @@index([ticketId])
+  @@unique([imapMailbox, imapUid])
 }
 
 model BlockedEmail {

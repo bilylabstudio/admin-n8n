@@ -70,6 +70,32 @@ type CustomerEntry = {
   lastText: string;
 };
 
+type ThreadMessage = {
+  id: string;
+  ticketId: string | null;
+  direction: 'inbound' | 'outbound';
+  source: 'admin' | 'webmail';
+  subject: string;
+  text: string;
+  at: string;
+  status: TicketStatus | null;
+  customerName: string | null;
+  tags: TicketTag[];
+};
+
+type ThreadResponse = {
+  ok: boolean;
+  customerEmail: string;
+  customerName: string | null;
+  subject: string;
+  anchorTicketId: string | null;
+  pendingTicketId: string | null;
+  composerMode: 'review_ticket' | 'follow_up';
+  draft: string;
+  messages: ThreadMessage[];
+  error?: string;
+};
+
 type LoadReason = 'initial' | 'poll' | 'manual' | 'action';
 type ViewMode = 'tickets' | 'conversations';
 type SubmitAction = 'send' | 'discard';
@@ -102,7 +128,13 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
   const [viewMode, setViewMode] = useState<ViewMode>('tickets');
   const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string | null>(null);
-  const [conversationTickets, setConversationTickets] = useState<Ticket[]>([]);
+  const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
+  const [threadCustomerName, setThreadCustomerName] = useState<string | null>(null);
+  const [threadSubject, setThreadSubject] = useState('(sin asunto)');
+  const [threadComposerMode, setThreadComposerMode] =
+    useState<ThreadResponse['composerMode']>('follow_up');
+  const [threadPendingTicketId, setThreadPendingTicketId] = useState<string | null>(null);
+  const [threadAnchorTicketId, setThreadAnchorTicketId] = useState<string | null>(null);
   const [mobilePanel, setMobilePanel] = useState<'list' | 'detail'>('list');
   const [conversationLoading, setConversationLoading] = useState(false);
   const [statusRailCollapsed, setStatusRailCollapsed] = useState(false);
@@ -203,24 +235,27 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     }
   }, []);
 
-  const loadConversation = useCallback(async (email: string) => {
+  const loadConversation = useCallback(async (email: string, ticketId?: string | null) => {
     setSelectedCustomerEmail(email);
     setConversationLoading(true);
     try {
-      const res = await fetch(`/api/customers/${encodeURIComponent(email)}/tickets`, {
+      const params = new URLSearchParams({ limit: '10' });
+      if (ticketId) params.set('ticketId', ticketId);
+      const res = await fetch(`/api/customers/${encodeURIComponent(email)}/thread?${params}`, {
         cache: 'no-store'
       });
-      const data = (await res.json()) as { ok: boolean; tickets: Ticket[] };
+      const data = (await res.json()) as ThreadResponse;
       if (data.ok) {
-        const fixedTickets = data.tickets.map(fixTicket);
-        setConversationTickets(fixedTickets);
-        const firstPending = fixedTickets.find((t) => REVIEWABLE.includes(t.status));
-        if (firstPending) {
-          setSelectedId(firstPending.id);
-          setDraft(firstPending.finalReply || firstPending.aiReply || '');
-          setDirty(false);
-          void markTicketSeen(firstPending);
-        }
+        setThreadMessages(data.messages.map(fixThreadMessage));
+        setThreadCustomerName(fixMojibake(data.customerName));
+        setThreadSubject(fixMojibake(data.subject) || '(sin asunto)');
+        setThreadComposerMode(data.composerMode);
+        setThreadPendingTicketId(data.pendingTicketId);
+        setThreadAnchorTicketId(data.anchorTicketId);
+        setDraft(data.draft || '');
+        setDirty(false);
+        const nextSelectedId = ticketId || data.pendingTicketId || data.anchorTicketId;
+        if (nextSelectedId) setSelectedId(nextSelectedId);
         setMobilePanel('detail');
       }
     } catch {
@@ -228,7 +263,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     } finally {
       setConversationLoading(false);
     }
-  }, [markTicketSeen]);
+  }, []);
 
   useEffect(() => {
     knownIds.current = new Set();
@@ -243,14 +278,19 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   }, [loadTickets]);
 
   useEffect(() => {
-    if (!selectedTicket || dirty || viewMode === 'conversations') return;
+    if (!selectedTicket || dirty || viewMode === 'conversations' || threadComposerMode !== 'review_ticket') return;
     setDraft(selectedTicket.finalReply || selectedTicket.aiReply || '');
-  }, [dirty, selectedTicket, viewMode]);
+  }, [dirty, selectedTicket, threadComposerMode, viewMode]);
 
   useEffect(() => {
     if (selectedId && visibleTickets.some((ticket) => ticket.id === selectedId)) return;
     setSelectedId(visibleTickets[0]?.id || null);
   }, [selectedId, visibleTickets]);
+
+  useEffect(() => {
+    if (viewMode !== 'tickets' || !selectedTicket) return;
+    void loadConversation(selectedTicket.customerEmail, selectedTicket.id);
+  }, [loadConversation, selectedTicket?.id, selectedTicket?.customerEmail, viewMode]);
 
   useEffect(() => {
     if (!isSentGroup) {
@@ -269,7 +309,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
   const selectTicket = (ticket: Ticket) => {
     setSelectedId(ticket.id);
-    setDraft(ticket.finalReply || ticket.aiReply || '');
+    setDraft('');
     setDirty(false);
     setNotice('');
     void markTicketSeen(ticket);
@@ -279,7 +319,12 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const switchViewMode = (mode: ViewMode) => {
     setViewMode(mode);
     setSelectedCustomerEmail(null);
-    setConversationTickets([]);
+    setThreadMessages([]);
+    setThreadCustomerName(null);
+    setThreadSubject('(sin asunto)');
+    setThreadComposerMode('follow_up');
+    setThreadPendingTicketId(null);
+    setThreadAnchorTicketId(null);
     setNotice('');
     setMobilePanel('list');
   };
@@ -343,6 +388,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const submitAction = async (action: SubmitAction, ticketId?: string) => {
     const id = ticketId ?? selectedTicket?.id;
     if (!id) return;
+    const reloadEmail = selectedCustomerEmail || selectedTicket?.customerEmail || null;
     setSubmitting(action);
     setError('');
 
@@ -359,13 +405,43 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       setDirty(false);
       setNotice(action === 'send' ? 'Respuesta enviada' : 'Ticket actualizado');
 
-      if (viewMode === 'conversations' && selectedCustomerEmail) {
-        await Promise.all([loadConversation(selectedCustomerEmail), loadTickets('action')]);
+      if (reloadEmail) {
+        await Promise.all([loadConversation(reloadEmail, id), loadTickets('action')]);
       } else {
         await loadTickets('action');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo completar la accion.');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const submitThreadFollowUp = async () => {
+    const email = selectedCustomerEmail || selectedTicket?.customerEmail;
+    const ticketId = threadAnchorTicketId || selectedTicket?.id;
+    if (!email || !ticketId || !draft.trim()) return;
+    setSubmitting('follow_up');
+    setError('');
+
+    try {
+      const response = await fetch(`/api/customers/${encodeURIComponent(email)}/thread/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ final_reply: draft, ticket_id: ticketId })
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: boolean; message?: string; error?: string }
+        | null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.message || data?.error || 'No se pudo enviar el seguimiento.');
+      }
+
+      setDirty(false);
+      setNotice('Mensaje enviado');
+      await Promise.all([loadConversation(email, ticketId), loadTickets('action')]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo enviar el seguimiento.');
     } finally {
       setSubmitting(null);
     }
@@ -633,44 +709,197 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
         </section>
 
         <div className="detail-panel-wrapper">
-          {viewMode === 'conversations' ? (
-            <ConversationPane
-              customerEmail={selectedCustomerEmail}
-              tickets={conversationTickets}
-              loading={conversationLoading}
-              draft={draft}
-              dirty={dirty}
-              selectedId={selectedId}
-              onBack={() => setMobilePanel('list')}
-              onDraftChange={(value) => {
-                setDraft(value);
-                setDirty(true);
-              }}
-              onSelectTicket={(id, defaultDraft) => {
-                setSelectedId(id);
-                setDraft(defaultDraft);
-                setDirty(false);
-              }}
-              onSubmit={submitAction}
-              submitting={submitting}
-            />
-          ) : (
-            <ReviewPane
-              draft={draft}
-              dirty={dirty}
-              onBack={() => setMobilePanel('list')}
-              onDraftChange={(value) => {
-                setDraft(value);
-                setDirty(true);
-              }}
-              onSubmit={submitAction}
-              submitting={submitting}
-              ticket={selectedTicket}
-            />
-          )}
+          <ThreadPane
+            anchorTicketId={threadAnchorTicketId || selectedTicket?.id || null}
+            composerMode={threadComposerMode}
+            customerEmail={selectedCustomerEmail || selectedTicket?.customerEmail || null}
+            customerName={threadCustomerName || selectedTicket?.customerName || null}
+            dirty={dirty}
+            draft={draft}
+            loading={conversationLoading}
+            messages={threadMessages}
+            onBack={() => setMobilePanel('list')}
+            onDraftChange={(value) => {
+              setDraft(value);
+              setDirty(true);
+            }}
+            onSubmitFollowUp={submitThreadFollowUp}
+            onSubmitReview={submitAction}
+            pendingTicketId={threadPendingTicketId}
+            selectedTicket={selectedTicket}
+            subject={threadSubject || selectedTicket?.subject || '(sin asunto)'}
+            submitting={submitting}
+          />
         </div>
       </section>
     </main>
+  );
+}
+
+function ThreadPane({
+  anchorTicketId,
+  composerMode,
+  customerEmail,
+  customerName,
+  dirty,
+  draft,
+  loading,
+  messages,
+  onBack,
+  onDraftChange,
+  onSubmitFollowUp,
+  onSubmitReview,
+  pendingTicketId,
+  selectedTicket,
+  subject,
+  submitting
+}: {
+  anchorTicketId: string | null;
+  composerMode: ThreadResponse['composerMode'];
+  customerEmail: string | null;
+  customerName: string | null;
+  dirty: boolean;
+  draft: string;
+  loading: boolean;
+  messages: ThreadMessage[];
+  onBack: () => void;
+  onDraftChange: (value: string) => void;
+  onSubmitFollowUp: () => void;
+  onSubmitReview: (action: SubmitAction, ticketId?: string) => void;
+  pendingTicketId: string | null;
+  selectedTicket: Ticket | null;
+  subject: string;
+  submitting: string | null;
+}) {
+  if (!customerEmail) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Selecciona un correo para ver la conversacion.</div>
+      </section>
+    );
+  }
+
+  if (loading) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Cargando conversacion...</div>
+      </section>
+    );
+  }
+
+  if (!messages.length) {
+    return (
+      <section className="review-pane">
+        <div className="empty-state">Sin mensajes para este cliente.</div>
+      </section>
+    );
+  }
+
+  const canReview = composerMode === 'review_ticket' && pendingTicketId !== null;
+  const canFollowUp = composerMode === 'follow_up' && anchorTicketId !== null;
+
+  return (
+    <section className="review-pane conv-pane">
+      <button className="mobile-back-btn" type="button" onClick={onBack}>
+        &larr; Volver
+      </button>
+      <div className="review-header">
+        <div>
+          <p className="eyebrow">Hilo del cliente - {customerEmail}</p>
+          <h2>{subject}</h2>
+          <p className="conv-email">{customerName || customerEmail}</p>
+        </div>
+        {selectedTicket ? <StatusBadge status={selectedTicket.status} /> : null}
+      </div>
+
+      {selectedTicket?.sendError ? (
+        <div className="send-error">
+          <strong>Ultimo error de envio</strong>
+          <span>{selectedTicket.sendError}</span>
+        </div>
+      ) : null}
+
+      <div className="conv-thread">
+        {messages.map((message) => {
+          const isInbound = message.direction === 'inbound';
+          return (
+            <div className="thread-turn" key={message.id}>
+              <div className={`thread-bubble ${isInbound ? 'bubble-client' : 'bubble-admin sent'}`}>
+                <div className="bubble-header">
+                  <span className="bubble-who">
+                    {isInbound ? customerName || 'Cliente' : 'Susana'} - {formatDate(message.at)}
+                    {message.status ? <> - <StatusBadge status={message.status} /></> : null}
+                    {!isInbound && message.source === 'webmail' ? <> - Webmail</> : null}
+                  </span>
+                  <CopyButton text={message.text} />
+                </div>
+                {message.subject && message.subject !== '(sin asunto)' ? (
+                  <p className="bubble-subject">{message.subject}</p>
+                ) : null}
+                <p className="bubble-text">{message.text}</p>
+                {message.tags.length ? (
+                  <div className="bubble-tags">
+                    <TagBadges tags={message.tags} />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <section className="thread-composer">
+        <div className="editor-heading">
+          <h3>{canReview ? 'Respuesta IA lista para revisar' : 'Nuevo mensaje al cliente'}</h3>
+          {dirty ? (
+            <span>Cambios sin enviar</span>
+          ) : (
+            <span>{canReview ? 'Lista para revisar' : 'Seguimiento manual'}</span>
+          )}
+        </div>
+        <textarea
+          value={draft}
+          onChange={(event) => onDraftChange(event.target.value)}
+          disabled={!canReview && !canFollowUp}
+          placeholder={
+            canReview
+              ? 'Editar respuesta antes de enviar'
+              : 'Escribe un nuevo mensaje para este cliente'
+          }
+        />
+        <div className="action-bar">
+          {canReview ? (
+            <>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={!draft.trim() || submitting !== null}
+                onClick={() => onSubmitReview('send', pendingTicketId || undefined)}
+              >
+                {submitting === 'send' ? 'Enviando...' : 'Enviar'}
+              </button>
+              <button
+                className="danger-action"
+                type="button"
+                disabled={submitting !== null}
+                onClick={() => onSubmitReview('discard', pendingTicketId || undefined)}
+              >
+                Rechazar
+              </button>
+            </>
+          ) : (
+            <button
+              className="primary-action"
+              type="button"
+              disabled={!canFollowUp || !draft.trim() || submitting !== null}
+              onClick={onSubmitFollowUp}
+            >
+              {submitting === 'follow_up' ? 'Enviando...' : 'Enviar mensaje'}
+            </button>
+          )}
+        </div>
+      </section>
+    </section>
   );
 }
 
@@ -1082,5 +1311,15 @@ function fixTicket(t: Ticket): Ticket {
     category: fixMojibake(t.category),
     intent: fixMojibake(t.intent),
     tags: t.tags || []
+  };
+}
+
+function fixThreadMessage(message: ThreadMessage): ThreadMessage {
+  return {
+    ...message,
+    customerName: fixMojibake(message.customerName),
+    subject: fixMojibake(message.subject) || '',
+    text: fixMojibake(message.text) || '',
+    tags: message.tags || []
   };
 }

@@ -1127,6 +1127,7 @@ button {
   flex-direction: column;
   gap: 14px;
   padding: 4px 0 16px;
+  min-height: 180px;
 }
 
 .thread-turn {
@@ -1248,6 +1249,35 @@ button {
 }
 
 .conv-editor textarea:focus {
+  border-color: rgba(99, 178, 183, 0.7);
+  box-shadow: 0 0 0 3px rgba(99, 178, 183, 0.15);
+}
+
+.thread-composer {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px 12px;
+}
+
+.thread-composer textarea {
+  width: 100%;
+  min-height: clamp(130px, 22vh, 240px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--ink);
+  padding: 13px 13px 24px;
+  line-height: 1.45;
+  scroll-padding-block: 18px;
+  resize: vertical;
+  outline: none;
+  font: inherit;
+}
+
+.thread-composer textarea:focus {
   border-color: rgba(99, 178, 183, 0.7);
   box-shadow: 0 0 0 3px rgba(99, 178, 183, 0.15);
 }
