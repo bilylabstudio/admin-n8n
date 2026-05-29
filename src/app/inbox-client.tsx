@@ -894,19 +894,6 @@ function ThreadPane({
             <span aria-hidden="true" />
           </button>
         </div>
-        {canReview ? (
-          <div className="composer-secondary-actions">
-            {dirty ? <span>Cambios sin enviar</span> : <span>Lista para revisar</span>}
-            <button
-              className="danger-action"
-              type="button"
-              disabled={submitting !== null}
-              onClick={() => onSubmitReview('discard', pendingTicketId || undefined)}
-            >
-              Rechazar
-            </button>
-          </div>
-        ) : null}
       </section>
     </section>
   );
