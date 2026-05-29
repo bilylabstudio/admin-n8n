@@ -122,7 +122,12 @@ function isSameOutboundMessage(a: ThreadMessageView, b: ThreadMessageView) {
   const sameSubject = normalizeForCompare(a.subject) === normalizeForCompare(b.subject);
   const sameText = hasMeaningfulOverlap(aText, bText);
 
-  return sameText || (sameSubject && minutesApart <= 5 && startsSimilarly(aText, bText));
+  return (
+    sameText ||
+    (sameSubject &&
+      minutesApart <= 5 &&
+      (startsSimilarly(aText, bText) || hasShortPrefixOverlap(aText, bText)))
+  );
 }
 
 function shouldPreferMessage(candidate: ThreadMessageView, current: ThreadMessageView) {
@@ -143,6 +148,13 @@ function startsSimilarly(a: string, b: string) {
   const length = Math.min(a.length, b.length, 120);
   if (length < 40) return false;
   return a.slice(0, length) === b.slice(0, length);
+}
+
+function hasShortPrefixOverlap(a: string, b: string) {
+  const shorter = a.length <= b.length ? a : b;
+  const longer = a.length > b.length ? a : b;
+  if (shorter.length < 8) return false;
+  return longer.startsWith(shorter);
 }
 
 function normalizeForCompare(value: string) {
