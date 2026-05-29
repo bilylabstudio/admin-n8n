@@ -469,15 +469,50 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-direction: column;
+  gap: 5px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
+}
+
+.ticket-export-check.with-discard {
+  flex-basis: 30px;
+  padding: 5px 0;
+}
+
+.ticket-export-check label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .ticket-export-check input {
   width: 15px;
   height: 15px;
   accent-color: var(--gummy-teal);
+}
+
+.row-discard-button {
+  width: 20px;
+  height: 20px;
+  border: 1px solid rgba(185, 59, 48, 0.22);
+  border-radius: 999px;
+  background: rgba(185, 59, 48, 0.08);
+  color: #9f332b;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.row-discard-button:hover:not(:disabled) {
+  border-color: rgba(185, 59, 48, 0.45);
+  background: rgba(185, 59, 48, 0.14);
+}
+
+.row-discard-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .ticket-row:hover {
@@ -1055,6 +1090,17 @@ button {
   border-color: rgba(99, 178, 183, 0.5);
   background: rgba(99, 178, 183, 0.13);
   color: #347d83;
+}
+
+.export-toolbar.discard-toolbar .discard-selected-btn,
+.export-toolbar.discard-toolbar .discard-all-btn {
+  border-color: rgba(185, 59, 48, 0.3);
+  background: rgba(185, 59, 48, 0.08);
+  color: #9f332b;
+}
+
+.export-toolbar.discard-toolbar .discard-all-btn {
+  font-weight: 900;
 }
 
 .ticket-tag {

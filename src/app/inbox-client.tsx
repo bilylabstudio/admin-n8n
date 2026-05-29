@@ -152,8 +152,15 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   );
 
   const isSentGroup = activeGroup === 'sent';
+  const isPendingReviewGroup = activeGroup === 'pending_review';
+  const canSelectRows = isSentGroup || isPendingReviewGroup;
 
   const selectedExportTickets = useMemo(
+    () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id)),
+    [exportSelection, visibleTickets]
+  );
+
+  const selectedPendingTickets = useMemo(
     () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id)),
     [exportSelection, visibleTickets]
   );
@@ -293,10 +300,10 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   }, [loadConversation, selectedTicket?.id, selectedTicket?.customerEmail, viewMode]);
 
   useEffect(() => {
-    if (!isSentGroup) {
+    if (!canSelectRows) {
       setExportSelection(new Set());
     }
-  }, [isSentGroup]);
+  }, [canSelectRows]);
 
   useEffect(() => {
     setExportSelection((current) => {
@@ -342,7 +349,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   };
 
   const selectAllVisibleForExport = () => {
-    if (!isSentGroup) return;
+    if (!canSelectRows) return;
     setExportSelection(new Set(visibleTickets.map((ticket) => ticket.id)));
   };
 
@@ -383,6 +390,82 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     link.remove();
     URL.revokeObjectURL(url);
     setNotice(`Descargados ${selectedExportTickets.length} mensajes`);
+  };
+
+  const discardPendingTickets = async (ticketIds: string[]) => {
+    const ids = Array.from(new Set(ticketIds.filter(Boolean)));
+    if (!ids.length) return;
+
+    const message =
+      ids.length === 1
+        ? '¿Enviar este mensaje a Descartados? No se enviará ningún correo.'
+        : `¿Enviar ${ids.length} mensajes a Descartados? No se enviará ningún correo.`;
+    if (!window.confirm(message)) return;
+
+    setSubmitting('bulk_discard');
+    setError('');
+
+    try {
+      const response = await fetch('/api/tickets/bulk-discard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'selected', ticket_ids: ids })
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: boolean; discarded?: number; error?: string }
+        | null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'No se pudieron descartar los mensajes.');
+      }
+
+      setExportSelection((current) => {
+        const next = new Set(current);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+      setNotice(`Descartados ${data.discarded ?? ids.length} mensajes`);
+      await loadTickets('action');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudieron descartar los mensajes.');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const discardAllPendingReview = async () => {
+    if (!isPendingReviewGroup || !visibleTickets.length) return;
+    if (
+      !window.confirm(
+        '¿Vaciar toda la bandeja Por revisar y enviar esos mensajes a Descartados? No se enviará ningún correo.'
+      )
+    ) {
+      return;
+    }
+
+    setSubmitting('bulk_discard_all');
+    setError('');
+
+    try {
+      const response = await fetch('/api/tickets/bulk-discard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'pending_review' })
+      });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: boolean; discarded?: number; error?: string }
+        | null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'No se pudo vaciar Por revisar.');
+      }
+
+      setExportSelection(new Set());
+      setNotice(`Descartados ${data.discarded ?? 0} mensajes`);
+      await loadTickets('action');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo vaciar Por revisar.');
+    } finally {
+      setSubmitting(null);
+    }
   };
 
   const submitAction = async (action: SubmitAction, ticketId?: string) => {
@@ -637,6 +720,45 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                   </button>
                 </div>
               ) : null}
+              {isPendingReviewGroup && viewMode === 'tickets' ? (
+                <div className="export-toolbar discard-toolbar" aria-label="Descartar mensajes por revisar">
+                  <span>{selectedPendingTickets.length} seleccionados</span>
+                  <button
+                    type="button"
+                    onClick={selectAllVisibleForExport}
+                    disabled={!visibleTickets.length || submitting === 'bulk_discard_all'}
+                  >
+                    Seleccionar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearExportSelection}
+                    disabled={!selectedPendingTickets.length || submitting === 'bulk_discard'}
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    className="discard-selected-btn"
+                    type="button"
+                    onClick={() =>
+                      discardPendingTickets(selectedPendingTickets.map((ticket) => ticket.id))
+                    }
+                    disabled={!selectedPendingTickets.length || submitting === 'bulk_discard'}
+                    title="Descartar seleccionados"
+                  >
+                    Descartar
+                  </button>
+                  <button
+                    className="discard-all-btn"
+                    type="button"
+                    onClick={discardAllPendingReview}
+                    disabled={!visibleTickets.length || submitting === 'bulk_discard_all'}
+                    title="Vaciar Por revisar"
+                  >
+                    Vaciar
+                  </button>
+                </div>
+              ) : null}
               {notice ? <p className="live-notice">{notice}</p> : null}
             </div>
 
@@ -659,19 +781,50 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                   ) : null}
                   {visibleTickets.map((ticket) => (
                     <div
-                      className={isSentGroup ? 'ticket-export-row' : 'ticket-export-row plain'}
+                      className={canSelectRows ? 'ticket-export-row' : 'ticket-export-row plain'}
                       key={ticket.id}
                     >
-                      {isSentGroup ? (
-                        <label className="ticket-export-check" title="Seleccionar para descargar">
-                          <input
-                            type="checkbox"
-                            checked={exportSelection.has(ticket.id)}
-                            onChange={(event) =>
-                              toggleExportSelection(ticket.id, event.target.checked)
+                      {canSelectRows ? (
+                        <div
+                          className={
+                            isPendingReviewGroup
+                              ? 'ticket-export-check with-discard'
+                              : 'ticket-export-check'
+                          }
+                        >
+                          <label
+                            title={
+                              isSentGroup
+                                ? 'Seleccionar para descargar'
+                                : 'Seleccionar para descartar'
                             }
-                          />
-                        </label>
+                          >
+                            <input
+                              aria-label={
+                                isSentGroup
+                                  ? 'Seleccionar para descargar'
+                                  : 'Seleccionar para descartar'
+                              }
+                              type="checkbox"
+                              checked={exportSelection.has(ticket.id)}
+                              onChange={(event) =>
+                                toggleExportSelection(ticket.id, event.target.checked)
+                              }
+                            />
+                          </label>
+                          {isPendingReviewGroup ? (
+                            <button
+                              aria-label="Descartar mensaje"
+                              className="row-discard-button"
+                              disabled={submitting === 'bulk_discard'}
+                              onClick={() => discardPendingTickets([ticket.id])}
+                              title="Descartar"
+                              type="button"
+                            >
+                              x
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                       <button
                         className={
