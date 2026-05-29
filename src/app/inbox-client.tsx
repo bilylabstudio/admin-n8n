@@ -32,6 +32,7 @@ type Ticket = {
   customerName: string | null;
   subject: string;
   receivedAt: string;
+  sentAt: string | null;
   originalText: string;
   aiReply: string;
   finalReply: string | null;
@@ -106,6 +107,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [conversationLoading, setConversationLoading] = useState(false);
   const [statusRailCollapsed, setStatusRailCollapsed] = useState(false);
   const [ticketListCollapsed, setTicketListCollapsed] = useState(false);
+  const [exportSelection, setExportSelection] = useState<Set<string>>(() => new Set());
 
   const visibleTickets = useMemo(() => {
     if (activeTagFilter === 'all') return tickets;
@@ -115,6 +117,13 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const selectedTicket = useMemo(
     () => visibleTickets.find((t) => t.id === selectedId) || visibleTickets[0] || null,
     [selectedId, visibleTickets]
+  );
+
+  const isSentGroup = activeGroup === 'sent';
+
+  const selectedExportTickets = useMemo(
+    () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id)),
+    [exportSelection, visibleTickets]
   );
 
   const customers = useMemo<CustomerEntry[]>(() => {
@@ -243,6 +252,21 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setSelectedId(visibleTickets[0]?.id || null);
   }, [selectedId, visibleTickets]);
 
+  useEffect(() => {
+    if (!isSentGroup) {
+      setExportSelection(new Set());
+    }
+  }, [isSentGroup]);
+
+  useEffect(() => {
+    setExportSelection((current) => {
+      if (!current.size) return current;
+      const visibleIds = new Set(visibleTickets.map((ticket) => ticket.id));
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleTickets]);
+
   const selectTicket = (ticket: Ticket) => {
     setSelectedId(ticket.id);
     setDraft(ticket.finalReply || ticket.aiReply || '');
@@ -258,6 +282,62 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setConversationTickets([]);
     setNotice('');
     setMobilePanel('list');
+  };
+
+  const toggleExportSelection = (ticketId: string, checked: boolean) => {
+    setExportSelection((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(ticketId);
+      } else {
+        next.delete(ticketId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllVisibleForExport = () => {
+    if (!isSentGroup) return;
+    setExportSelection(new Set(visibleTickets.map((ticket) => ticket.id)));
+  };
+
+  const clearExportSelection = () => {
+    setExportSelection(new Set());
+  };
+
+  const downloadSelectedJson = () => {
+    if (!selectedExportTickets.length) return;
+
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      count: selectedExportTickets.length,
+      messages: selectedExportTickets.map((ticket) => ({
+        id: ticket.id,
+        customerName: ticket.customerName,
+        customerEmail: ticket.customerEmail,
+        subject: ticket.subject,
+        receivedAt: ticket.receivedAt,
+        sentAt: ticket.sentAt,
+        status: ticket.status,
+        wasEditedAndSent: ticket.status === 'edited_sent',
+        originalMessage: ticket.originalText,
+        aiMessage: ticket.aiReply,
+        sentMessage: ticket.finalReply || ticket.aiReply || ''
+      }))
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: 'application/json;charset=utf-8'
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vgummies-enviados-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setNotice(`Descargados ${selectedExportTickets.length} mensajes`);
   };
 
   const submitAction = async (action: SubmitAction, ticketId?: string) => {
@@ -429,6 +509,33 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                   </button>
                 ))}
               </div>
+              {isSentGroup && viewMode === 'tickets' ? (
+                <div className="export-toolbar" aria-label="Exportar mensajes enviados">
+                  <span>{selectedExportTickets.length} seleccionados</span>
+                  <button
+                    type="button"
+                    onClick={selectAllVisibleForExport}
+                    disabled={!visibleTickets.length}
+                  >
+                    Seleccionar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={clearExportSelection}
+                    disabled={!selectedExportTickets.length}
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    className="export-download-btn"
+                    type="button"
+                    onClick={downloadSelectedJson}
+                    disabled={!selectedExportTickets.length}
+                  >
+                    Descargar JSON
+                  </button>
+                </div>
+              ) : null}
               {notice ? <p className="live-notice">{notice}</p> : null}
             </div>
 
@@ -450,30 +557,45 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                     <div className="empty-state">No hay correos en este estado.</div>
                   ) : null}
                   {visibleTickets.map((ticket) => (
-                    <button
-                      className={
-                        ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
-                      }
+                    <div
+                      className={isSentGroup ? 'ticket-export-row' : 'ticket-export-row plain'}
                       key={ticket.id}
-                      type="button"
-                      onClick={() => selectTicket(ticket)}
                     >
-                      <span className="row-main">
-                        <strong>{ticket.customerName || ticket.customerEmail}</strong>
-                        <small>{ticket.subject}</small>
-                      </span>
-                      <span className="row-meta">
-                        <StatusBadge status={ticket.status} />
-                        <time>{formatDate(ticket.receivedAt)}</time>
-                      </span>
-                      <span className="row-preview">{preview(ticket.originalText)}</span>
-                      <span className="row-tags">
-                        <TagBadges tags={ticket.tags} />
-                        {ticket.category ? <em>{ticket.category}</em> : null}
-                        {ticket.intent ? <em>{ticket.intent}</em> : null}
-                        {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
-                      </span>
-                    </button>
+                      {isSentGroup ? (
+                        <label className="ticket-export-check" title="Seleccionar para descargar">
+                          <input
+                            type="checkbox"
+                            checked={exportSelection.has(ticket.id)}
+                            onChange={(event) =>
+                              toggleExportSelection(ticket.id, event.target.checked)
+                            }
+                          />
+                        </label>
+                      ) : null}
+                      <button
+                        className={
+                          ticket.id === selectedTicket?.id ? 'ticket-row selected' : 'ticket-row'
+                        }
+                        type="button"
+                        onClick={() => selectTicket(ticket)}
+                      >
+                        <span className="row-main">
+                          <strong>{ticket.customerName || ticket.customerEmail}</strong>
+                          <small>{ticket.subject}</small>
+                        </span>
+                        <span className="row-meta">
+                          <StatusBadge status={ticket.status} />
+                          <time>{formatDate(ticket.receivedAt)}</time>
+                        </span>
+                        <span className="row-preview">{preview(ticket.originalText)}</span>
+                        <span className="row-tags">
+                          <TagBadges tags={ticket.tags} />
+                          {ticket.category ? <em>{ticket.category}</em> : null}
+                          {ticket.intent ? <em>{ticket.intent}</em> : null}
+                          {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
+                        </span>
+                      </button>
+                    </div>
                   ))}
                 </>
               ) : (

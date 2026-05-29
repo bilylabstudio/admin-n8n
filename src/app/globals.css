@@ -414,6 +414,38 @@ button {
   text-align: left;
 }
 
+.ticket-export-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ticket-export-row.plain {
+  display: block;
+}
+
+.ticket-export-row .ticket-row {
+  flex: 1 1 auto;
+}
+
+.ticket-export-check {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.ticket-export-check input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--gummy-teal);
+}
+
 .ticket-row:hover {
   background: rgba(255, 253, 248, 0.7);
   border-color: var(--line-soft);
@@ -947,6 +979,50 @@ button {
   background: rgba(99, 178, 183, 0.13);
 }
 
+.export-toolbar {
+  order: 4;
+  flex: 1 1 100%;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.export-toolbar span {
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.export-toolbar button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.export-toolbar button:hover:not(:disabled) {
+  border-color: var(--gummy-teal);
+  color: var(--gummy-teal);
+}
+
+.export-toolbar button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.export-toolbar .export-download-btn {
+  border-color: rgba(99, 178, 183, 0.5);
+  background: rgba(99, 178, 183, 0.13);
+  color: #347d83;
+}
+
 .ticket-tag {
   display: inline-flex;
   align-items: center;
@@ -963,7 +1039,7 @@ button {
 }
 
 .list-toolbar .live-notice {
-  order: 4;
+  order: 5;
 }
 
 .ticket-tag.tag-danger {
