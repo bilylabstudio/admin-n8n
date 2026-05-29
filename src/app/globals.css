@@ -105,10 +105,23 @@ button {
   min-width: 0;
 }
 
+.brand-home-button {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .brand-lockup img {
   width: 110px;
   height: auto;
   flex: 0 0 auto;
+}
+
+.brand-copy {
+  min-width: 0;
 }
 
 .admin-topbar h1,
@@ -121,12 +134,33 @@ button {
   letter-spacing: 0;
 }
 
+.thread-topbar {
+  min-height: 56px;
+  padding-block: 7px;
+}
+
+.thread-topbar h1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: var(--ink-muted);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
+}
+
+.topbar-subtitle {
+  margin: 2px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topbar-meta {
@@ -1112,7 +1146,8 @@ button {
 }
 
 .conv-pane {
-  /* Inherits flex-direction: column from .review-pane */
+  gap: 7px;
+  overflow: hidden;
 }
 
 .conv-email {
@@ -1122,28 +1157,38 @@ button {
 }
 
 .conv-thread {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  padding: 4px 0 16px;
-  min-height: 180px;
+  gap: 9px;
+  padding: 2px 4px 12px;
 }
 
 .thread-turn {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  width: 100%;
+}
+
+.thread-turn.from-client {
+  justify-content: flex-start;
+}
+
+.thread-turn.from-admin {
+  justify-content: flex-end;
 }
 
 .thread-bubble {
+  width: fit-content;
+  max-width: min(780px, 86%);
   border-radius: var(--radius-md);
-  padding: 11px 12px;
+  padding: 9px 11px;
   border: 1px solid var(--line);
 }
 
 .bubble-client {
-  background: var(--surface-inset);
+  background: var(--surface-raised);
 }
 
 .bubble-admin {
@@ -1179,7 +1224,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 7px;
+  margin-bottom: 5px;
 }
 
 .bubble-who {
@@ -1192,7 +1237,7 @@ button {
 }
 
 .bubble-subject {
-  margin: 0 0 5px;
+  margin: 0 0 4px;
   color: var(--ink-soft);
   font-size: 12px;
   font-weight: 700;
@@ -1254,25 +1299,30 @@ button {
 }
 
 .thread-composer {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  display: grid;
-  gap: 8px;
-  padding: 10px 12px 12px;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  display: block;
+  padding: 0 4px 4px;
+}
+
+.composer-input-wrap {
+  position: relative;
 }
 
 .thread-composer textarea {
   width: 100%;
-  min-height: clamp(130px, 22vh, 240px);
+  height: 86px;
+  min-height: 72px;
+  max-height: 170px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: 18px;
   background: var(--surface-inset);
   color: var(--ink);
-  padding: 13px 13px 24px;
+  padding: 13px 64px 44px 16px;
   line-height: 1.45;
   scroll-padding-block: 18px;
-  resize: vertical;
+  resize: none;
   outline: none;
   font: inherit;
 }
@@ -1280,6 +1330,54 @@ button {
 .thread-composer textarea:focus {
   border-color: rgba(99, 178, 183, 0.7);
   box-shadow: 0 0 0 3px rgba(99, 178, 183, 0.15);
+}
+
+.composer-send-button {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--gummy-teal);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(99, 178, 183, 0.28);
+}
+
+.composer-send-button span {
+  width: 0;
+  height: 0;
+  margin-left: 3px;
+  border-top: 8px solid transparent;
+  border-bottom: 8px solid transparent;
+  border-left: 12px solid currentColor;
+}
+
+.composer-send-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.composer-secondary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 2px 0;
+}
+
+.composer-secondary-actions span {
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.composer-secondary-actions .danger-action {
+  padding: 6px 10px;
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1630,6 +1728,20 @@ button {
   .topbar-meta {
     font-size: 11px;
     gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .brand-lockup {
+    gap: 10px;
+    width: 100%;
+  }
+
+  .brand-copy {
+    flex: 1 1 auto;
+  }
+
+  .topbar-subtitle {
+    font-size: 11px;
   }
 
   .eyebrow {
@@ -1810,10 +1922,19 @@ button {
   /* Conversation thread on mobile */
   .conv-thread {
     max-height: none;
+    overflow: visible;
   }
 
   .conv-editor textarea {
     min-height: 90px;
+  }
+
+  .thread-bubble {
+    max-width: 100%;
+  }
+
+  .thread-composer textarea {
+    height: 110px;
   }
 
   /* Grid and forms */

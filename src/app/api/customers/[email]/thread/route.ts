@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import {
+  dedupeThreadMessages,
   latestReviewableTicket,
-  sortThreadMessages,
   storedThreadMessageToView,
   ticketToThreadMessages
 } from '@/lib/thread-messages';
@@ -88,20 +88,9 @@ export async function GET(
     take: limit
   });
 
-  const sentTicketTexts = new Set(
-    tickets
-      .filter((ticket) => ticket.status === 'approved_sent' || ticket.status === 'edited_sent')
-      .map((ticket) => normalizeThreadText(ticket.finalReply || ticket.aiReply || ''))
-      .filter(Boolean)
-  );
-  const visibleStoredMessages = storedMessages.filter((message) => {
-    if (message.source !== 'webmail') return true;
-    return !sentTicketTexts.has(normalizeThreadText(message.text));
-  });
-
-  const messages = sortThreadMessages([
+  const messages = dedupeThreadMessages([
     ...tickets.flatMap(ticketToThreadMessages),
-    ...visibleStoredMessages.map(storedThreadMessageToView)
+    ...storedMessages.map(storedThreadMessageToView)
   ]).slice(-limit);
 
   const latest = messages[messages.length - 1] || null;
@@ -141,8 +130,4 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | []> 
   } finally {
     if (timer) clearTimeout(timer);
   }
-}
-
-function normalizeThreadText(value: string): string {
-  return value.trim().replace(/\s+/g, ' ').toLowerCase();
 }

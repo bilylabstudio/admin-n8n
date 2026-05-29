@@ -447,17 +447,42 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     }
   };
 
+  const activeThreadEmail = selectedCustomerEmail || selectedTicket?.customerEmail || null;
+  const activeThreadSubject = threadSubject || selectedTicket?.subject || '';
+  const activeThreadName = threadCustomerName || selectedTicket?.customerName || activeThreadEmail;
+
+  const goHome = () => {
+    window.location.assign('/');
+  };
+
   return (
     <main className="admin-shell">
-      <header className="admin-topbar">
+      <header className={activeThreadEmail ? 'admin-topbar thread-topbar' : 'admin-topbar'}>
         <div className="brand-lockup">
-          <img
-            src="https://v-gummies.com/cdn/shop/files/logo_negro.png?v=1737016595&width=220"
-            alt="V-gummies"
-          />
-          <div>
-            <p className="eyebrow">Area administrativa</p>
-            <h1>Soporte V-Gummies</h1>
+          <button
+            className="brand-home-button"
+            type="button"
+            onClick={goHome}
+            title="Volver al inicio"
+          >
+            <img
+              src="https://v-gummies.com/cdn/shop/files/logo_negro.png?v=1737016595&width=220"
+              alt="V-gummies"
+            />
+          </button>
+          <div className="brand-copy">
+            {activeThreadEmail ? (
+              <>
+                <p className="eyebrow">Hilo del cliente - {activeThreadEmail}</p>
+                <h1>{activeThreadSubject || 'Conversacion del cliente'}</h1>
+                <p className="topbar-subtitle">{activeThreadName}</p>
+              </>
+            ) : (
+              <>
+                <p className="eyebrow">Area administrativa</p>
+                <h1>Soporte V-Gummies</h1>
+              </>
+            )}
           </div>
         </div>
         <div className="topbar-meta">
@@ -727,7 +752,6 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
             onSubmitReview={submitAction}
             pendingTicketId={threadPendingTicketId}
             selectedTicket={selectedTicket}
-            subject={threadSubject || selectedTicket?.subject || '(sin asunto)'}
             submitting={submitting}
           />
         </div>
@@ -751,7 +775,6 @@ function ThreadPane({
   onSubmitReview,
   pendingTicketId,
   selectedTicket,
-  subject,
   submitting
 }: {
   anchorTicketId: string | null;
@@ -768,7 +791,6 @@ function ThreadPane({
   onSubmitReview: (action: SubmitAction, ticketId?: string) => void;
   pendingTicketId: string | null;
   selectedTicket: Ticket | null;
-  subject: string;
   submitting: string | null;
 }) {
   if (!customerEmail) {
@@ -803,14 +825,6 @@ function ThreadPane({
       <button className="mobile-back-btn" type="button" onClick={onBack}>
         &larr; Volver
       </button>
-      <div className="review-header">
-        <div>
-          <p className="eyebrow">Hilo del cliente - {customerEmail}</p>
-          <h2>{subject}</h2>
-          <p className="conv-email">{customerName || customerEmail}</p>
-        </div>
-        {selectedTicket ? <StatusBadge status={selectedTicket.status} /> : null}
-      </div>
 
       {selectedTicket?.sendError ? (
         <div className="send-error">
@@ -823,7 +837,10 @@ function ThreadPane({
         {messages.map((message) => {
           const isInbound = message.direction === 'inbound';
           return (
-            <div className="thread-turn" key={message.id}>
+            <div
+              className={`thread-turn ${isInbound ? 'from-client' : 'from-admin'}`}
+              key={message.id}
+            >
               <div className={`thread-bubble ${isInbound ? 'bubble-client' : 'bubble-admin sent'}`}>
                 <div className="bubble-header">
                   <span className="bubble-who">
@@ -849,55 +866,47 @@ function ThreadPane({
       </div>
 
       <section className="thread-composer">
-        <div className="editor-heading">
-          <h3>{canReview ? 'Respuesta IA lista para revisar' : 'Nuevo mensaje al cliente'}</h3>
-          {dirty ? (
-            <span>Cambios sin enviar</span>
-          ) : (
-            <span>{canReview ? 'Lista para revisar' : 'Seguimiento manual'}</span>
-          )}
+        <div className="composer-input-wrap">
+          <textarea
+            value={draft}
+            onChange={(event) => onDraftChange(event.target.value)}
+            disabled={!canReview && !canFollowUp}
+            placeholder={
+              canReview
+                ? 'Editar respuesta antes de enviar'
+                : 'Escribe un nuevo mensaje para este cliente'
+            }
+          />
+          <button
+            className="composer-send-button"
+            type="button"
+            disabled={
+              canReview
+                ? !draft.trim() || submitting !== null
+                : !canFollowUp || !draft.trim() || submitting !== null
+            }
+            aria-label={canReview ? 'Enviar respuesta' : 'Enviar mensaje'}
+            title={canReview ? 'Enviar respuesta' : 'Enviar mensaje'}
+            onClick={() =>
+              canReview ? onSubmitReview('send', pendingTicketId || undefined) : onSubmitFollowUp()
+            }
+          >
+            <span aria-hidden="true" />
+          </button>
         </div>
-        <textarea
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          disabled={!canReview && !canFollowUp}
-          placeholder={
-            canReview
-              ? 'Editar respuesta antes de enviar'
-              : 'Escribe un nuevo mensaje para este cliente'
-          }
-        />
-        <div className="action-bar">
-          {canReview ? (
-            <>
-              <button
-                className="primary-action"
-                type="button"
-                disabled={!draft.trim() || submitting !== null}
-                onClick={() => onSubmitReview('send', pendingTicketId || undefined)}
-              >
-                {submitting === 'send' ? 'Enviando...' : 'Enviar'}
-              </button>
-              <button
-                className="danger-action"
-                type="button"
-                disabled={submitting !== null}
-                onClick={() => onSubmitReview('discard', pendingTicketId || undefined)}
-              >
-                Rechazar
-              </button>
-            </>
-          ) : (
+        {canReview ? (
+          <div className="composer-secondary-actions">
+            {dirty ? <span>Cambios sin enviar</span> : <span>Lista para revisar</span>}
             <button
-              className="primary-action"
+              className="danger-action"
               type="button"
-              disabled={!canFollowUp || !draft.trim() || submitting !== null}
-              onClick={onSubmitFollowUp}
+              disabled={submitting !== null}
+              onClick={() => onSubmitReview('discard', pendingTicketId || undefined)}
             >
-              {submitting === 'follow_up' ? 'Enviando...' : 'Enviar mensaje'}
+              Rechazar
             </button>
-          )}
-        </div>
+          </div>
+        ) : null}
       </section>
     </section>
   );
