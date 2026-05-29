@@ -395,12 +395,14 @@ button {
 
 .ticket-list {
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px;
 }
 
 .ticket-row {
   width: 100%;
+  min-width: 0;
   display: grid;
   gap: 5px;
   border: 1px solid transparent;
@@ -408,6 +410,7 @@ button {
   padding: 9px;
   background: transparent;
   color: var(--ink);
+  overflow: hidden;
   text-align: left;
 }
 
@@ -429,6 +432,8 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .row-main {
@@ -436,6 +441,8 @@ button {
 }
 
 .row-main strong {
+  flex: 1 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -448,6 +455,8 @@ button {
 }
 
 .row-main small {
+  flex: 0 1 48%;
+  min-width: 0;
   max-width: 48%;
   overflow: hidden;
   text-align: right;
