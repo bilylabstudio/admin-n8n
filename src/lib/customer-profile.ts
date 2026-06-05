@@ -1,6 +1,7 @@
 import { db } from './db';
 
 const RECENT_ORDER_LIMIT = 5;
+const ORDER_LOOKUP_LIMIT = 25;
 const ORDER_NUMBER_MIN_LENGTH = 4;
 const ORDER_WORD_PATTERN = '(?:pedido|orden|order|compra|subscription|suscripcion)';
 const HASH_ORDER_RE = /#\s*([A-Za-z0-9][A-Za-z0-9._-]{3,})/gi;
@@ -25,6 +26,11 @@ export type CustomerProfile = {
   email: string;
   orderCount: number;
   recentOrders: CustomerOrderSummary[];
+};
+
+export type CustomerProfileLookupInput = {
+  email: string | null | undefined;
+  texts?: Array<string | null | undefined>;
 };
 
 type PlatformOrderRow = {
@@ -55,46 +61,90 @@ export function extractOrderNumberCandidates(texts: Array<string | null | undefi
 export async function getCustomerProfileByEmail(
   emailInput: string | null | undefined
 ): Promise<CustomerProfile> {
-  const email = normalizeCustomerEmail(emailInput);
-  if (!email) return emptyCustomerProfile('');
+  return getCustomerProfile({ email: emailInput });
+}
+
+export async function getCustomerProfile(
+  input: CustomerProfileLookupInput
+): Promise<CustomerProfile> {
+  const email = normalizeCustomerEmail(input.email);
+  const orderNumbers = extractOrderNumberCandidates(input.texts || []);
+  if (!email && !orderNumbers.length) return emptyCustomerProfile(email);
 
   try {
-    const where = {
-      customerEmail: {
-        equals: email,
-        mode: 'insensitive' as const
-      }
-    };
-
-    const [orderCount, recentRows] = await Promise.all([
-      db.platformOrder.count({ where }),
-      db.platformOrder.findMany({
-        where,
-        orderBy: { processedAt: 'desc' },
-        take: RECENT_ORDER_LIMIT,
-        select: {
-          id: true,
-          platform: true,
-          orderNumber: true,
-          externalOrderId: true,
-          processedAt: true,
-          totalPrice: true,
-          currency: true,
-          financialStatus: true,
-          fulfillmentStatus: true,
-          cancelledAt: true
-        }
-      })
+    const [emailRows, orderNumberRows] = await Promise.all([
+      email ? findOrdersByEmail(email) : Promise.resolve([]),
+      orderNumbers.length ? findOrdersByOrderNumbers(orderNumbers) : Promise.resolve([])
     ]);
+
+    const orders = dedupeOrders([...orderNumberRows, ...emailRows]);
 
     return {
       email,
-      orderCount,
-      recentOrders: recentRows.map(orderRowToSummary)
+      orderCount: orders.length,
+      recentOrders: orders.slice(0, RECENT_ORDER_LIMIT).map(orderRowToSummary)
     };
   } catch {
     return emptyCustomerProfile(email);
   }
+}
+
+async function findOrdersByEmail(email: string): Promise<PlatformOrderRow[]> {
+  return db.platformOrder.findMany({
+    where: {
+      customerEmail: {
+        equals: email,
+        mode: 'insensitive'
+      }
+    },
+    orderBy: { processedAt: 'desc' },
+    take: ORDER_LOOKUP_LIMIT,
+    select: platformOrderSelect()
+  });
+}
+
+async function findOrdersByOrderNumbers(orderNumbers: string[]): Promise<PlatformOrderRow[]> {
+  const orderNumberVariants = [...new Set(orderNumbers.flatMap((value) => [value, `#${value}`]))];
+
+  return db.platformOrder.findMany({
+    where: {
+      OR: [
+        { orderNumber: { in: orderNumberVariants } },
+        { externalOrderId: { in: orderNumbers } }
+      ]
+    },
+    orderBy: { processedAt: 'desc' },
+    take: ORDER_LOOKUP_LIMIT,
+    select: platformOrderSelect()
+  });
+}
+
+function platformOrderSelect() {
+  return {
+    id: true,
+    platform: true,
+    orderNumber: true,
+    externalOrderId: true,
+    processedAt: true,
+    totalPrice: true,
+    currency: true,
+    financialStatus: true,
+    fulfillmentStatus: true,
+    cancelledAt: true
+  } as const;
+}
+
+function dedupeOrders(rows: PlatformOrderRow[]) {
+  const seen = new Set<string>();
+  const deduped: PlatformOrderRow[] = [];
+
+  for (const row of rows) {
+    if (seen.has(row.id)) continue;
+    seen.add(row.id);
+    deduped.push(row);
+  }
+
+  return deduped;
 }
 
 function normalizeCustomerEmail(emailInput: string | null | undefined) {

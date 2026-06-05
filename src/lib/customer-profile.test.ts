@@ -73,7 +73,7 @@ describe('getCustomerProfileByEmail', () => {
     expect(findMany).not.toHaveBeenCalled();
   });
 
-  it('normalizes email and returns total count plus five recent orders', async () => {
+  it('normalizes email and returns recent orders', async () => {
     const { getCustomerProfileByEmail } = await import('./customer-profile');
     count.mockResolvedValue(6);
     findMany.mockResolvedValue([
@@ -93,7 +93,7 @@ describe('getCustomerProfileByEmail', () => {
 
     await expect(getCustomerProfileByEmail(' Lola@Example.COM ')).resolves.toEqual({
       email: 'lola@example.com',
-      orderCount: 6,
+      orderCount: 1,
       recentOrders: [
         {
           id: 'order-1',
@@ -109,36 +109,161 @@ describe('getCustomerProfileByEmail', () => {
       ]
     });
 
-    expect(count).toHaveBeenCalledWith({
-      where: {
-        customerEmail: {
-          equals: 'lola@example.com',
-          mode: 'insensitive'
+    expect(count).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          customerEmail: {
+            equals: 'lola@example.com',
+            mode: 'insensitive'
+          }
+        },
+        orderBy: { processedAt: 'desc' },
+        take: 25,
+        select: {
+          id: true,
+          platform: true,
+          orderNumber: true,
+          externalOrderId: true,
+          processedAt: true,
+          totalPrice: true,
+          currency: true,
+          financialStatus: true,
+          fulfillmentStatus: true,
+          cancelledAt: true
         }
-      }
-    });
-    expect(findMany).toHaveBeenCalledWith({
-      where: {
-        customerEmail: {
-          equals: 'lola@example.com',
-          mode: 'insensitive'
+      })
+    );
+  });
+
+  it('finds an order by number when the email does not match', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    count.mockResolvedValue(0);
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'order-by-number',
+          platform: 'shopify',
+          orderNumber: '#45405',
+          externalOrderId: 'gid-45405',
+          processedAt: new Date('2026-06-05T09:00:00.000Z'),
+          totalPrice: '59.90',
+          currency: 'EUR',
+          financialStatus: 'paid',
+          fulfillmentStatus: 'fulfilled',
+          cancelledAt: null
         }
-      },
-      orderBy: { processedAt: 'desc' },
-      take: 5,
-      select: {
-        id: true,
-        platform: true,
-        orderNumber: true,
-        externalOrderId: true,
-        processedAt: true,
-        totalPrice: true,
-        currency: true,
-        financialStatus: true,
-        fulfillmentStatus: true,
-        cancelledAt: true
-      }
+      ]);
+
+    await expect(
+      getCustomerProfile({
+        email: 'ticket-email@example.com',
+        texts: ['Modificar direccion de envio', 'He realizado el pedido #45405']
+      })
+    ).resolves.toEqual({
+      email: 'ticket-email@example.com',
+      orderCount: 1,
+      recentOrders: [
+        {
+          id: 'order-by-number',
+          platform: 'shopify',
+          orderNumber: '#45405',
+          processedAt: '2026-06-05T09:00:00.000Z',
+          totalPrice: '59.90',
+          currency: 'EUR',
+          financialStatus: 'paid',
+          fulfillmentStatus: 'fulfilled',
+          cancelledAt: null
+        }
+      ]
     });
+
+    expect(findMany).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        where: {
+          OR: [
+            { orderNumber: { in: ['45405', '#45405'] } },
+            { externalOrderId: { in: ['45405'] } }
+          ]
+        }
+      })
+    );
+  });
+
+  it('dedupes orders found by both email and number and prioritizes number matches', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    count.mockResolvedValue(2);
+    const shared = {
+      id: 'shared-order',
+      platform: 'shopify',
+      orderNumber: '#45405',
+      externalOrderId: '45405',
+      processedAt: new Date('2026-06-05T09:00:00.000Z'),
+      totalPrice: '59.90',
+      currency: 'EUR',
+      financialStatus: 'paid',
+      fulfillmentStatus: 'fulfilled',
+      cancelledAt: null
+    };
+    findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'email-order',
+          platform: 'shopify',
+          orderNumber: '#1001',
+          externalOrderId: '1001',
+          processedAt: new Date('2026-06-01T09:00:00.000Z'),
+          totalPrice: '29.90',
+          currency: 'EUR',
+          financialStatus: 'paid',
+          fulfillmentStatus: null,
+          cancelledAt: null
+        },
+        shared
+      ])
+      .mockResolvedValueOnce([shared]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['pedido #45405']
+    });
+
+    expect(profile.orderCount).toBe(2);
+    expect(profile.recentOrders.map((order) => order.id)).toEqual([
+      'shared-order',
+      'email-order'
+    ]);
+  });
+
+  it('keeps only five recent deduped orders', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    count.mockResolvedValue(6);
+    findMany
+      .mockResolvedValueOnce(
+        Array.from({ length: 6 }, (_, index) => ({
+          id: `email-order-${index}`,
+          platform: 'shopify',
+          orderNumber: `#10${index}`,
+          externalOrderId: `10${index}`,
+          processedAt: new Date(`2026-06-0${Math.min(index + 1, 9)}T09:00:00.000Z`),
+          totalPrice: '10.00',
+          currency: 'EUR',
+          financialStatus: 'paid',
+          fulfillmentStatus: null,
+          cancelledAt: null
+        }))
+      )
+      .mockResolvedValueOnce([]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['pedido #99999']
+    });
+
+    expect(profile.orderCount).toBe(6);
+    expect(profile.recentOrders).toHaveLength(5);
   });
 
   it('uses externalOrderId when orderNumber is missing', async () => {
@@ -167,8 +292,7 @@ describe('getCustomerProfileByEmail', () => {
 
   it('returns an empty profile when the order lookup fails', async () => {
     const { getCustomerProfileByEmail } = await import('./customer-profile');
-    count.mockRejectedValue(new Error('database unavailable'));
-    findMany.mockResolvedValue([]);
+    findMany.mockRejectedValue(new Error('database unavailable'));
 
     await expect(getCustomerProfileByEmail('cliente@example.com')).resolves.toEqual({
       email: 'cliente@example.com',

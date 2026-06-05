@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
-import { getCustomerProfileByEmail } from '@/lib/customer-profile';
+import { getCustomerProfile } from '@/lib/customer-profile';
 import { db } from '@/lib/db';
 import {
   dedupeThreadMessages,
@@ -30,7 +30,7 @@ export async function GET(
   const selectedTicketId = url.searchParams.get('ticketId');
   const limit = clampLimit(Number(url.searchParams.get('limit') || DEFAULT_LIMIT));
 
-  const [selectedTicket, recentTickets, customerProfile] = await Promise.all([
+  const [selectedTicket, recentTickets] = await Promise.all([
     selectedTicketId
       ? db.ticket.findFirst({
           where: { id: selectedTicketId, customerEmail: email }
@@ -40,13 +40,16 @@ export async function GET(
       where: { customerEmail: email },
       orderBy: { receivedAt: 'desc' },
       take: limit
-    }),
-    getCustomerProfileByEmail(email)
+    })
   ]);
 
   const ticketMap = new Map(recentTickets.map((ticket) => [ticket.id, ticket]));
   if (selectedTicket) ticketMap.set(selectedTicket.id, selectedTicket);
   const tickets = Array.from(ticketMap.values());
+  const customerProfile = await getCustomerProfile({
+    email,
+    texts: tickets.flatMap((ticket) => [ticket.subject, ticket.originalText])
+  });
 
   const sentMessages = await withTimeout(fetchSentMessagesForCustomer(email, limit), 2500);
   if (sentMessages.length) {
