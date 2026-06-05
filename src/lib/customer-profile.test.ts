@@ -12,6 +12,49 @@ vi.mock('./db', () => ({
   }
 }));
 
+describe('extractOrderNumberCandidates', () => {
+  it('extracts hash-prefixed order numbers', async () => {
+    const { extractOrderNumberCandidates } = await import('./customer-profile');
+
+    expect(
+      extractOrderNumberCandidates([
+        'Hola soy Isabel y he realizado el pedido #45405 y necesito modificar la direccion.'
+      ])
+    ).toEqual(['45405']);
+  });
+
+  it('extracts numbers near order words', async () => {
+    const { extractOrderNumberCandidates } = await import('./customer-profile');
+
+    expect(
+      extractOrderNumberCandidates([
+        'Necesito revisar pedido 45405',
+        'La orden 99881 no aparece',
+        'My order 77777 has a problem',
+        'Compra 11223 pendiente'
+      ])
+    ).toEqual(['45405', '99881', '77777', '11223']);
+  });
+
+  it('does not extract address, postal code, or short numbers without order context', async () => {
+    const { extractOrderNumberCandidates } = await import('./customer-profile');
+
+    expect(
+      extractOrderNumberCandidates([
+        'Nueva direccion Calle Valle de Zuriza numero 20, 3B, 50015 Zaragoza'
+      ])
+    ).toEqual([]);
+  });
+
+  it('dedupes candidates and strips punctuation', async () => {
+    const { extractOrderNumberCandidates } = await import('./customer-profile');
+
+    expect(
+      extractOrderNumberCandidates(['Pedido #45405.', 'pedido 45405', 'orden: #45405'])
+    ).toEqual(['45405']);
+  });
+});
+
 describe('getCustomerProfileByEmail', () => {
   beforeEach(() => {
     count.mockReset();

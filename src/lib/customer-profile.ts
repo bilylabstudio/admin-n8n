@@ -1,6 +1,13 @@
 import { db } from './db';
 
 const RECENT_ORDER_LIMIT = 5;
+const ORDER_NUMBER_MIN_LENGTH = 4;
+const ORDER_WORD_PATTERN = '(?:pedido|orden|order|compra|subscription|suscripcion)';
+const HASH_ORDER_RE = /#\s*([A-Za-z0-9][A-Za-z0-9._-]{3,})/gi;
+const WORD_ORDER_RE = new RegExp(
+  `${ORDER_WORD_PATTERN}\\s*(?:n(?:umero|ro|o)?\\.?|number|#|:|-)?\\s*#?\\s*([A-Za-z0-9][A-Za-z0-9._-]{3,})`,
+  'gi'
+);
 
 export type CustomerOrderSummary = {
   id: string;
@@ -32,6 +39,18 @@ type PlatformOrderRow = {
   fulfillmentStatus: string | null;
   cancelledAt: Date | null;
 };
+
+export function extractOrderNumberCandidates(texts: Array<string | null | undefined>) {
+  const candidates = new Set<string>();
+
+  for (const text of texts) {
+    const value = normalizeSearchText(text);
+    collectMatches(value, HASH_ORDER_RE, candidates);
+    collectMatches(value, WORD_ORDER_RE, candidates);
+  }
+
+  return [...candidates];
+}
 
 export async function getCustomerProfileByEmail(
   emailInput: string | null | undefined
@@ -102,6 +121,32 @@ function orderRowToSummary(row: PlatformOrderRow): CustomerOrderSummary {
     fulfillmentStatus: row.fulfillmentStatus,
     cancelledAt: row.cancelledAt?.toISOString() || null
   };
+}
+
+function normalizeSearchText(value: string | null | undefined) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function collectMatches(value: string, pattern: RegExp, candidates: Set<string>) {
+  pattern.lastIndex = 0;
+  for (const match of value.matchAll(pattern)) {
+    const candidate = normalizeOrderCandidate(match[1]);
+    if (candidate) candidates.add(candidate);
+  }
+}
+
+function normalizeOrderCandidate(value: string | undefined) {
+  const candidate = String(value || '')
+    .trim()
+    .replace(/^#+/, '')
+    .replace(/[.,;:)\]]+$/g, '')
+    .replace(/\s+/g, '');
+
+  if (candidate.length < ORDER_NUMBER_MIN_LENGTH) return '';
+  if (!/[0-9]/.test(candidate)) return '';
+  return candidate;
 }
 
 function decimalToString(value: unknown) {
