@@ -349,24 +349,9 @@ Add:
 }
 ```
 
-- [ ] **Step 4: Add rate-limit wait and final summary nodes**
+- [ ] **Step 4: Add final summary node**
 
-Add:
-
-```json
-{
-  "id": "wait-between-pages",
-  "name": "Pausa entre paginas",
-  "type": "n8n-nodes-base.wait",
-  "typeVersion": 1.1,
-  "position": [1080, -240],
-  "webhookId": "shopify-backfill-2026-wait",
-  "parameters": {
-    "amount": 1,
-    "unit": "seconds"
-  }
-}
-```
+Do not add an n8n Wait node in this manual backfill. Manual executions can crash or remain paused on Wait during this loop, so the `Hay mas paginas` true branch must connect directly back to `Preparar pagina Shopify`.
 
 Add:
 
@@ -404,10 +389,15 @@ Update `connections` so:
 },
 "Hay mas paginas": {
   "main": [
-    [{ "node": "Pausa entre paginas", "type": "main", "index": 0 }],
+    [{ "node": "Preparar pagina Shopify", "type": "main", "index": 0 }],
     [{ "node": "Resumen final", "type": "main", "index": 0 }]
   ]
-},
+}
+```
+
+The workflow must not contain this connection:
+
+```json
 "Pausa entre paginas": {
   "main": [[{ "node": "Preparar pagina Shopify", "type": "main", "index": 0 }]]
 }
