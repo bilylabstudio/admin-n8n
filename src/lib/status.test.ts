@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canReview,
+  canRestoreToReview,
   canUpdateFromIngest,
   isInboxGroup,
   labelForStatus,
@@ -31,6 +32,12 @@ describe('ticket status helpers', () => {
     expect(canReview('pending_review')).toBe(true);
     expect(canReview('send_failed')).toBe(true);
     expect(canReview('approved_sent')).toBe(false);
+  });
+
+  it('allows only discarded tickets to be restored to review', () => {
+    expect(canRestoreToReview('discarded')).toBe(true);
+    expect(canRestoreToReview('pending_review')).toBe(false);
+    expect(canRestoreToReview('approved_sent')).toBe(false);
   });
 
   it('labels technical statuses in Spanish', () => {

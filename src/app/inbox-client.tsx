@@ -168,7 +168,9 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
   const isSentGroup = activeGroup === 'sent';
   const isPendingReviewGroup = activeGroup === 'pending_review';
+  const isDiscardedGroup = activeGroup === 'discarded';
   const canSelectRows = isSentGroup || isPendingReviewGroup;
+  const hasRowActions = canSelectRows || isDiscardedGroup;
 
   const selectedExportTickets = useMemo(
     () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id)),
@@ -481,6 +483,33 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       await loadTickets('action');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo vaciar Por revisar.');
+    } finally {
+      setSubmitting(null);
+    }
+  };
+
+  const restoreDiscardedTicket = async (ticketId: string) => {
+    if (!ticketId) return;
+    if (!window.confirm('¿Volver a mover este ticket a Por revisar?')) return;
+
+    setSubmitting('restore');
+    setError('');
+
+    try {
+      const response = await fetch(`/api/tickets/${ticketId}/restore`, { method: 'POST' });
+      const data = (await response.json().catch(() => null)) as
+        | { ok: boolean; error?: string }
+        | null;
+      if (!response.ok || !data?.ok) {
+        throw new Error(data?.error || 'No se pudo volver a poner el ticket en Por revisar.');
+      }
+
+      setNotice('Ticket devuelto a Por revisar');
+      await loadTickets('action');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'No se pudo volver a poner el ticket en Por revisar.'
+      );
     } finally {
       setSubmitting(null);
     }
@@ -799,7 +828,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                   ) : null}
                   {visibleTickets.map((ticket) => (
                     <div
-                      className={canSelectRows ? 'ticket-export-row' : 'ticket-export-row plain'}
+                      className={hasRowActions ? 'ticket-export-row' : 'ticket-export-row plain'}
                       key={ticket.id}
                     >
                       {canSelectRows ? (
@@ -842,6 +871,19 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                               x
                             </button>
                           ) : null}
+                        </div>
+                      ) : isDiscardedGroup ? (
+                        <div className="ticket-export-check with-restore">
+                          <button
+                            aria-label="Volver a revisar"
+                            className="row-restore-button"
+                            disabled={submitting === 'restore'}
+                            onClick={() => restoreDiscardedTicket(ticket.id)}
+                            title="Volver a revisar"
+                            type="button"
+                          >
+                            ↩
+                          </button>
                         </div>
                       ) : null}
                       <button
@@ -922,6 +964,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
             }}
             onSubmitFollowUp={submitThreadFollowUp}
             onSubmitReview={submitAction}
+            onRestoreTicket={restoreDiscardedTicket}
             pendingTicketId={threadPendingTicketId}
             selectedTicket={selectedTicket}
             submitting={submitting}
@@ -946,6 +989,7 @@ function ThreadPane({
   onDraftChange,
   onSubmitFollowUp,
   onSubmitReview,
+  onRestoreTicket,
   pendingTicketId,
   selectedTicket,
   submitting
@@ -963,6 +1007,7 @@ function ThreadPane({
   onDraftChange: (value: string) => void;
   onSubmitFollowUp: () => void;
   onSubmitReview: (action: SubmitAction, ticketId?: string) => void;
+  onRestoreTicket: (ticketId: string) => void;
   pendingTicketId: string | null;
   selectedTicket: Ticket | null;
   submitting: string | null;
@@ -1004,6 +1049,20 @@ function ThreadPane({
         <div className="send-error">
           <strong>Ultimo error de envio</strong>
           <span>{selectedTicket.sendError}</span>
+        </div>
+      ) : null}
+
+      {selectedTicket?.status === 'discarded' ? (
+        <div className="restore-ticket-strip">
+          <span>Ticket descartado</span>
+          <button
+            className="secondary-action"
+            disabled={submitting !== null}
+            onClick={() => onRestoreTicket(selectedTicket.id)}
+            type="button"
+          >
+            {submitting === 'restore' ? 'Restaurando...' : 'Volver a revisar'}
+          </button>
         </div>
       ) : null}
 

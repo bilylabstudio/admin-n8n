@@ -56,6 +56,10 @@ export function canReview(status: TicketStatus): boolean {
   return ['new', 'ai_generated', 'pending_review', 'send_failed'].includes(status);
 }
 
+export function canRestoreToReview(status: TicketStatus): boolean {
+  return status === 'discarded';
+}
+
 export function nextStatusAfterIngest(hasAiReply: boolean): TicketStatus {
   return hasAiReply ? 'pending_review' : 'new';
 }

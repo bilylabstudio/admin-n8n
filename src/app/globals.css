@@ -481,6 +481,11 @@ button {
   padding: 5px 0;
 }
 
+.ticket-export-check.with-restore {
+  flex-basis: 30px;
+  padding: 5px 0;
+}
+
 .ticket-export-check label {
   display: flex;
   align-items: center;
@@ -511,6 +516,28 @@ button {
 }
 
 .row-discard-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.row-restore-button {
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(99, 178, 183, 0.38);
+  border-radius: 999px;
+  background: rgba(99, 178, 183, 0.12);
+  color: #347d83;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.row-restore-button:hover:not(:disabled) {
+  border-color: rgba(99, 178, 183, 0.7);
+  background: rgba(99, 178, 183, 0.2);
+}
+
+.row-restore-button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
@@ -711,6 +738,25 @@ button {
   padding: 10px;
   background: var(--error-bg);
   color: var(--error-red);
+}
+
+.restore-ticket-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid rgba(99, 178, 183, 0.22);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  background: rgba(99, 178, 183, 0.08);
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.restore-ticket-strip .secondary-action {
+  padding: 7px 10px;
+  white-space: nowrap;
 }
 
 .review-grid {
