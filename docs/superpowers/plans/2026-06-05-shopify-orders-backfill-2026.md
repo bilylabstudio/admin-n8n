@@ -4,7 +4,7 @@
 
 **Goal:** Build a temporary n8n workflow that imports every Shopify order from `2026-01-01T00:00:00.000Z` onward in automatic 250-order pages, without duplicating existing `PlatformOrder` rows.
 
-**Architecture:** Create a separate n8n workflow JSON based on `workflows/shopify-finanzas-sync.json`. The workflow uses a Manual Trigger, reads the same admin settings and Shopify credential, stores backfill state in `$getWorkflowStaticData('global')`, loops with `sinceId`, posts each non-empty batch to `POST /api/n8n/orders`, and ends with one summary item.
+**Architecture:** Create a separate n8n workflow JSON based on `workflows/shopify-finanzas-sync.json`. The workflow uses a Manual Trigger, reads the same admin settings and Shopify credential, reads/writes an isolated cursor under platform `shopify_backfill_2026`, loops with `sinceId`, posts each non-empty batch to `POST /api/n8n/orders`, persists page progress through `POST /api/n8n/sync-state`, and ends with one summary item.
 
 **Tech Stack:** n8n workflow JSON, Shopify n8n node, DataTable node, HTTP Request node, Code node JavaScript, Review Admin `/api/n8n/orders`.
 
@@ -15,6 +15,8 @@
 - Create: `../workflows/shopify-finanzas-backfill-2026-temporal.json`
   - Temporary n8n workflow export for import/testing in n8n.
   - Must not modify `../workflows/shopify-finanzas-sync.json`.
+  - Must avoid `raw_json` in the backfill payload to prevent large manual execution data from crashing n8n.
+  - Must set `saveManualExecutions: false`, `saveExecutionProgress: false`, `saveDataSuccessExecution: none`, and `saveDataErrorExecution: none`.
 - Reference: `../workflows/shopify-finanzas-sync.json`
   - Source for DataTable ID, Shopify credential ID/name, field list, retry settings, and admin POST pattern.
 - Reference: `src/lib/platform-orders.ts`
@@ -404,6 +406,8 @@ The workflow must not contain this connection:
 ```
 
 - [ ] **Step 6: Validate JSON parses**
+
+Before validating, add `GET cursor backfill` after `Aplanar settings`, and add `POST /api/n8n/sync-state (backfill)` after `POST /api/n8n/orders`. The cursor platform must be `shopify_backfill_2026`, not `shopify`, so the daily sync cursor remains untouched. The order mapper must omit `raw_json` from the order payload.
 
 Run:
 
