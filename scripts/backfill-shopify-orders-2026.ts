@@ -356,6 +356,13 @@ async function main() {
       }
 
       const nextSinceId = maxShopifyId(sinceId, orders);
+      if (sinceId !== '0' && BigInt(nextSinceId) <= BigInt(sinceId)) {
+        throw new Error(
+          `pagination_not_advancing: since_id=${sinceId}, next_since_id=${nextSinceId}. ` +
+            'El proxy devolvio una pagina repetida; detuve el backfill para evitar upserts duplicados.'
+        );
+      }
+
       lastUpdatedAt = maxUpdatedAt(lastUpdatedAt, orders);
 
       if (!runtimeConfig.dryRun) {

@@ -23,12 +23,14 @@ Flujo vigente:
 
 1. El script lee el cursor `shopify_backfill_2026` desde `PlatformSyncState`.
 2. El script llama a `POST /webhook/shopify-orders-page` con `since_id`, `created_at_min` y `limit: 250`.
-3. n8n valida `X-Review-Admin-Token`, usa la credencial `Shopify account 2` y devuelve una sola pagina de pedidos.
+3. n8n valida `X-Review-Admin-Token`, usa la credencial `Shopify account 2` y devuelve una sola pagina de pedidos. El nodo Shopify debe poner `status`, `sinceId`, `createdAtMin` y `fields` dentro de `options`; si se ponen dentro de `filters`, n8n los ignora y devuelve repetida la primera pagina.
 4. El script transforma los pedidos y guarda con `upsertPlatformOrders`.
 5. El script actualiza `shopify_backfill_2026` despues de cada pagina.
 6. Si se corta, la siguiente ejecucion continua desde el ultimo `lastExternalId`.
 
 Esta revision elimina la necesidad de `SHOPIFY_SHOP_DOMAIN` y `SHOPIFY_ADMIN_ACCESS_TOKEN` en Review Admin.
+
+El script debe detenerse si `next_since_id` no avanza respecto al `since_id` de entrada, para evitar cientos de upserts sobre la misma pagina.
 
 ## Objetivo Original
 
