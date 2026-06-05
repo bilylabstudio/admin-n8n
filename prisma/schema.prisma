@@ -259,6 +259,7 @@ model PlatformOrder {
   @@unique([platform, externalOrderId])
   @@index([platform, processedAt])
   @@index([processedAt])
+  @@index([customerEmail, processedAt])
 }
 
 model PlatformSyncState {
