@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
+import { getCustomerProfileByEmail } from '@/lib/customer-profile';
 import { db } from '@/lib/db';
 import {
   dedupeThreadMessages,
@@ -29,7 +30,7 @@ export async function GET(
   const selectedTicketId = url.searchParams.get('ticketId');
   const limit = clampLimit(Number(url.searchParams.get('limit') || DEFAULT_LIMIT));
 
-  const [selectedTicket, recentTickets] = await Promise.all([
+  const [selectedTicket, recentTickets, customerProfile] = await Promise.all([
     selectedTicketId
       ? db.ticket.findFirst({
           where: { id: selectedTicketId, customerEmail: email }
@@ -39,7 +40,8 @@ export async function GET(
       where: { customerEmail: email },
       orderBy: { receivedAt: 'desc' },
       take: limit
-    })
+    }),
+    getCustomerProfileByEmail(email)
   ]);
 
   const ticketMap = new Map(recentTickets.map((ticket) => [ticket.id, ticket]));
@@ -104,6 +106,7 @@ export async function GET(
     ok: true,
     customerEmail: email,
     customerName: anchorTicket?.customerName || storedMessages[0]?.customerName || null,
+    customerProfile,
     subject: anchorTicket?.subject || storedMessages[0]?.subject || '(sin asunto)',
     anchorTicketId: anchorTicket?.id || null,
     pendingTicketId: shouldReviewTicket ? pendingTicket.id : null,
