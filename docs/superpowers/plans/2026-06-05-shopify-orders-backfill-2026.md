@@ -2,11 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a temporary n8n workflow that imports every Shopify order from `2026-01-01T00:00:00.000Z` onward in automatic 250-order pages, without duplicating existing `PlatformOrder` rows.
+**Goal:** Build a temporary n8n workflow that imports every Shopify order from `2026-01-01T00:00:00.000Z` onward in bounded 250-order pages, without duplicating existing `PlatformOrder` rows.
 
-**Architecture:** Create a separate n8n workflow JSON based on `workflows/shopify-finanzas-sync.json`. The workflow uses a Manual Trigger, reads the same admin settings and Shopify credential, reads/writes an isolated cursor under platform `shopify_backfill_2026`, loops with `sinceId`, posts each non-empty batch to `POST /api/n8n/orders`, persists page progress through `POST /api/n8n/sync-state`, and ends with one summary item.
+**Architecture:** Create a separate n8n workflow JSON based on `workflows/shopify-finanzas-sync.json`. The workflow uses a Manual Trigger, reads the same admin settings and Shopify credential, reads/writes an isolated cursor under platform `shopify_backfill_2026`, loops with `sinceId`, posts each non-empty batch to `POST /api/n8n/orders`, persists page progress through `POST /api/n8n/sync-state`, caps each manual execution at 10 Shopify pages, and ends with one summary item.
 
 **Tech Stack:** n8n workflow JSON, Shopify n8n node, DataTable node, HTTP Request node, Code node JavaScript, Review Admin `/api/n8n/orders`.
+
+**Runtime correction:** Large manual executions still accumulate live editor/canvas data in n8n even when execution saving is disabled. The workflow must therefore stop after `max_pages_per_run: 10` pages, show `Resumen final.has_more_pages`, and rely on the persisted `shopify_backfill_2026` cursor so the next manual run continues from the last saved Shopify ID instead of starting from zero.
 
 ---
 
@@ -17,6 +19,7 @@
   - Must not modify `../workflows/shopify-finanzas-sync.json`.
   - Must avoid `raw_json` in the backfill payload to prevent large manual execution data from crashing n8n.
   - Must set `saveManualExecutions: false`, `saveExecutionProgress: false`, `saveDataSuccessExecution: none`, and `saveDataErrorExecution: none`.
+  - Must set `max_pages_per_run: 10` and stop cleanly after each chunk so the n8n editor does not accumulate hundreds of loop iterations in one manual execution.
 - Reference: `../workflows/shopify-finanzas-sync.json`
   - Source for DataTable ID, Shopify credential ID/name, field list, retry settings, and admin POST pattern.
 - Reference: `src/lib/platform-orders.ts`
@@ -448,7 +451,7 @@ Validate workflow file workflows/shopify-finanzas-backfill-2026-temporal.json.
 
 Expected: no invalid node type, credential type, required parameter, or connection errors. If validation reports a node schema mismatch, edit the JSON with the exact field names returned by validation and rerun validation.
 
-- [ ] **Step 3: Confirm the workflow does not update sync-state**
+- [ ] **Step 3: Confirm the workflow updates only the isolated backfill sync-state**
 
 Run:
 
@@ -456,7 +459,7 @@ Run:
 Select-String -Path workflows\shopify-finanzas-backfill-2026-temporal.json -Pattern "sync-state|sync-cursor"
 ```
 
-Expected: no matches.
+Expected: matches for `/api/n8n/sync-state`, `/api/n8n/sync-cursor`, and platform `shopify_backfill_2026`. It must not write the normal daily sync cursor platform `shopify`.
 
 - [ ] **Step 4: Confirm the workflow uses the approved date and limit**
 
@@ -544,10 +547,12 @@ Workflow separado del diario: yes
 Manual Trigger only: yes
 Shopify limit 250: yes
 created_at_min 2026-01-01: yes
-Loop continues only when last batch count is 250: yes
+Loop continues only when last batch count is 250 and pages_processed is below max_pages_per_run: yes
+max_pages_per_run 10: yes
 POST /api/n8n/orders used: yes
-POST /api/n8n/sync-state absent: yes
+POST /api/n8n/sync-state used only for shopify_backfill_2026: yes
 Final summary node present: yes
+Final summary includes has_more_pages and next_action: yes
 Workflow active false: yes
 ```
 
@@ -558,9 +563,10 @@ Final handoff must include:
 ```text
 1. Abrir n8n.
 2. Abrir "Shopify - Finanzas Backfill Temporal 2026".
-3. Ejecutar manualmente una sola vez.
+3. Ejecutar manualmente una vez por chunk.
 4. Revisar el nodo "Resumen final".
-5. Cuando confirme que total_imported es razonable, desactivar o borrar el workflow temporal.
+5. Si `has_more_pages` es `true`, ejecutar manualmente otra vez; continuará desde el cursor guardado.
+6. Cuando `has_more_pages` sea `false`, desactivar o borrar el workflow temporal.
 ```
 
 - [ ] **Step 3: Mention duplicate safety**
