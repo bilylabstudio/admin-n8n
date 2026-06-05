@@ -3,6 +3,11 @@
 import type { TicketStatus } from '@prisma/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  formatCustomerOrderLine,
+  formatOrderCountLabel,
+  type CustomerProfileView
+} from '@/lib/customer-profile-view';
+import {
   type InboxGroup,
   inboxGroups,
   labelForStatus,
@@ -87,6 +92,7 @@ type ThreadResponse = {
   ok: boolean;
   customerEmail: string;
   customerName: string | null;
+  customerProfile?: CustomerProfileView;
   subject: string;
   anchorTicketId: string | null;
   pendingTicketId: string | null;
@@ -99,6 +105,12 @@ type ThreadResponse = {
 type LoadReason = 'initial' | 'poll' | 'manual' | 'action';
 type ViewMode = 'tickets' | 'conversations';
 type SubmitAction = 'send' | 'discard';
+
+const EMPTY_CUSTOMER_PROFILE: CustomerProfileView = {
+  email: '',
+  orderCount: 0,
+  recentOrders: []
+};
 
 const POLL_MS = 7000;
 const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
@@ -130,6 +142,9 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [selectedCustomerEmail, setSelectedCustomerEmail] = useState<string | null>(null);
   const [threadMessages, setThreadMessages] = useState<ThreadMessage[]>([]);
   const [threadCustomerName, setThreadCustomerName] = useState<string | null>(null);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfileView>(
+    EMPTY_CUSTOMER_PROFILE
+  );
   const [threadSubject, setThreadSubject] = useState('(sin asunto)');
   const [threadComposerMode, setThreadComposerMode] =
     useState<ThreadResponse['composerMode']>('follow_up');
@@ -244,6 +259,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
   const loadConversation = useCallback(async (email: string, ticketId?: string | null) => {
     setSelectedCustomerEmail(email);
+    setCustomerProfile(EMPTY_CUSTOMER_PROFILE);
     setConversationLoading(true);
     try {
       const params = new URLSearchParams({ limit: '10' });
@@ -255,6 +271,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       if (data.ok) {
         setThreadMessages(data.messages.map(fixThreadMessage));
         setThreadCustomerName(fixMojibake(data.customerName));
+        setCustomerProfile(fixCustomerProfile(data.customerProfile));
         setThreadSubject(fixMojibake(data.subject) || '(sin asunto)');
         setThreadComposerMode(data.composerMode);
         setThreadPendingTicketId(data.pendingTicketId);
@@ -332,6 +349,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setThreadComposerMode('follow_up');
     setThreadPendingTicketId(null);
     setThreadAnchorTicketId(null);
+    setCustomerProfile(EMPTY_CUSTOMER_PROFILE);
     setNotice('');
     setMobilePanel('list');
   };
@@ -892,6 +910,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
             composerMode={threadComposerMode}
             customerEmail={selectedCustomerEmail || selectedTicket?.customerEmail || null}
             customerName={threadCustomerName || selectedTicket?.customerName || null}
+            customerProfile={customerProfile}
             dirty={dirty}
             draft={draft}
             loading={conversationLoading}
@@ -918,6 +937,7 @@ function ThreadPane({
   composerMode,
   customerEmail,
   customerName,
+  customerProfile,
   dirty,
   draft,
   loading,
@@ -934,6 +954,7 @@ function ThreadPane({
   composerMode: ThreadResponse['composerMode'];
   customerEmail: string | null;
   customerName: string | null;
+  customerProfile: CustomerProfileView;
   dirty: boolean;
   draft: string;
   loading: boolean;
@@ -996,11 +1017,21 @@ function ThreadPane({
             >
               <div className={`thread-bubble ${isInbound ? 'bubble-client' : 'bubble-admin sent'}`}>
                 <div className="bubble-header">
-                  <span className="bubble-who">
-                    {isInbound ? customerName || 'Cliente' : 'Susana'} - {formatDate(message.at)}
-                    {message.status ? <> - <StatusBadge status={message.status} /></> : null}
-                    {!isInbound && message.source === 'webmail' ? <> - Webmail</> : null}
-                  </span>
+                  {isInbound ? (
+                    <CustomerBubbleMeta
+                      at={message.at}
+                      customerEmail={customerEmail}
+                      customerName={customerName}
+                      profile={customerProfile}
+                      status={message.status}
+                    />
+                  ) : (
+                    <span className="bubble-who">
+                      Susana - {formatDate(message.at)}
+                      {message.status ? <> - <StatusBadge status={message.status} /></> : null}
+                      {message.source === 'webmail' ? <> - Webmail</> : null}
+                    </span>
+                  )}
                   <CopyButton text={message.text} />
                 </div>
                 {message.subject && message.subject !== '(sin asunto)' ? (
@@ -1385,6 +1416,62 @@ function ReviewPane({
   );
 }
 
+function CustomerBubbleMeta({
+  at,
+  customerEmail,
+  customerName,
+  profile,
+  status
+}: {
+  at: string;
+  customerEmail: string | null;
+  customerName: string | null;
+  profile: CustomerProfileView;
+  status: TicketStatus | null;
+}) {
+  const hasOrders = profile.orderCount > 0 && profile.recentOrders.length > 0;
+  return (
+    <span className="bubble-who customer-bubble-meta">
+      <span>{customerName || 'Cliente'}</span>
+      {customerEmail ? (
+        <>
+          <span aria-hidden="true">-</span>
+          <span>{customerEmail}</span>
+        </>
+      ) : null}
+      <span aria-hidden="true">-</span>
+      <time>{formatDate(at)}</time>
+      {status ? (
+        <>
+          <span aria-hidden="true">-</span>
+          <StatusBadge status={status} />
+        </>
+      ) : null}
+      {hasOrders ? (
+        <>
+          <span aria-hidden="true">-</span>
+          <span className="order-tooltip-wrap">
+            <button
+              aria-label={`${formatOrderCountLabel(profile.orderCount)}. Ver ultimos pedidos`}
+              className="order-count-trigger"
+              type="button"
+            >
+              {formatOrderCountLabel(profile.orderCount)}
+            </button>
+            <span className="order-tooltip" role="tooltip">
+              {profile.recentOrders.map((order) => (
+                <span className="order-tooltip-line" key={order.id || order.orderNumber}>
+                  {formatCustomerOrderLine(order)}
+                </span>
+              ))}
+            </span>
+          </span>
+        </>
+      ) : null}
+    </span>
+  );
+}
+
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
@@ -1470,5 +1557,26 @@ function fixThreadMessage(message: ThreadMessage): ThreadMessage {
     subject: fixMojibake(message.subject) || '',
     text: fixMojibake(message.text) || '',
     tags: message.tags || []
+  };
+}
+
+function fixCustomerProfile(profile?: CustomerProfileView | null): CustomerProfileView {
+  if (!profile) return EMPTY_CUSTOMER_PROFILE;
+  return {
+    email: profile.email || '',
+    orderCount: Number(profile.orderCount || 0),
+    recentOrders: Array.isArray(profile.recentOrders)
+      ? profile.recentOrders.map((order) => ({
+          id: String(order.id || ''),
+          platform: String(order.platform || ''),
+          orderNumber: String(order.orderNumber || ''),
+          processedAt: String(order.processedAt || ''),
+          totalPrice: String(order.totalPrice || '0'),
+          currency: String(order.currency || 'EUR'),
+          financialStatus: String(order.financialStatus || ''),
+          fulfillmentStatus: order.fulfillmentStatus ? String(order.fulfillmentStatus) : null,
+          cancelledAt: order.cancelledAt ? String(order.cancelledAt) : null
+        }))
+      : []
   };
 }

@@ -1282,6 +1282,65 @@ button {
   font-weight: 700;
 }
 
+.customer-bubble-meta {
+  flex-wrap: wrap;
+  row-gap: 3px;
+}
+
+.order-tooltip-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.order-count-trigger {
+  border: 0;
+  background: transparent;
+  color: var(--gummy-teal);
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.order-count-trigger:hover,
+.order-count-trigger:focus-visible {
+  color: #347d83;
+  outline: none;
+}
+
+.order-tooltip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 30;
+  width: max-content;
+  max-width: min(430px, calc(100vw - 32px));
+  display: none;
+  gap: 5px;
+  border: 1px solid rgba(46, 42, 57, 0.16);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--ink-soft);
+  padding: 9px 10px;
+  box-shadow: 0 10px 28px rgba(46, 42, 57, 0.14);
+  white-space: normal;
+}
+
+.order-tooltip-wrap:hover .order-tooltip,
+.order-tooltip-wrap:focus-within .order-tooltip {
+  display: grid;
+}
+
+.order-tooltip-line {
+  display: block;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .bubble-subject {
   margin: 0 0 4px;
   color: var(--ink-soft);
@@ -1959,6 +2018,12 @@ button {
 
   .thread-bubble {
     max-width: 100%;
+  }
+
+  .order-tooltip {
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 32px);
   }
 
   .thread-composer textarea {
