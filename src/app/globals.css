@@ -1314,8 +1314,8 @@ button {
 .order-tooltip {
   position: absolute;
   left: 0;
-  bottom: calc(100% + 8px);
-  z-index: 30;
+  top: calc(100% + 8px);
+  z-index: 80;
   width: max-content;
   max-width: min(430px, calc(100vw - 32px));
   display: none;
