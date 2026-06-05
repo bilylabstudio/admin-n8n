@@ -11,7 +11,26 @@ El flujo actual `Shopify - Finanzas Sync` sincroniza pedidos de Shopify hacia Re
 
 La inconsistencia detectada es que el flujo trae solo una pagina de Shopify con `limit: 250`. Si entre ejecuciones diarias hubo mas de 250 pedidos, algunos pudieron quedar fuera. La tabla destino ya tiene proteccion contra duplicados mediante `upsert` por `platform + externalOrderId`, asi que reinyectar pedidos existentes no crea duplicados.
 
-## Objetivo
+## Revision 2026-06-05: Proxy n8n + script directo
+
+El diseno operativo aprobado cambio despues de comprobar que las ejecuciones manuales largas de n8n acumulan demasiados datos en el editor. La version vigente usa n8n solo como proxy de credencial Shopify de una pagina y mueve el loop, cursor y escritura en base de datos a un script de Review Admin.
+
+Workflow vigente en n8n: `Shopify - Proxy Pedidos Pagina`.
+
+Script vigente: `scripts/backfill-shopify-orders-2026.ts`.
+
+Flujo vigente:
+
+1. El script lee el cursor `shopify_backfill_2026` desde `PlatformSyncState`.
+2. El script llama a `POST /webhook/shopify-orders-page` con `since_id`, `created_at_min` y `limit: 250`.
+3. n8n valida `X-Review-Admin-Token`, usa la credencial `Shopify account 2` y devuelve una sola pagina de pedidos.
+4. El script transforma los pedidos y guarda con `upsertPlatformOrders`.
+5. El script actualiza `shopify_backfill_2026` despues de cada pagina.
+6. Si se corta, la siguiente ejecucion continua desde el ultimo `lastExternalId`.
+
+Esta revision elimina la necesidad de `SHOPIFY_SHOP_DOMAIN` y `SHOPIFY_ADMIN_ACCESS_TOKEN` en Review Admin.
+
+## Objetivo Original
 
 Crear un workflow temporal de n8n que, con una sola ejecucion manual, cargue todos los pedidos de Shopify desde el `2026-01-01T00:00:00.000Z` en adelante.
 

@@ -4,33 +4,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import type { PlatformOrderInput } from '../src/lib/platform-orders';
 
 const DEFAULT_CREATED_AT_MIN = '2026-01-01T00:00:00.000Z';
-const DEFAULT_API_VERSION = '2026-01';
 const DEFAULT_CURSOR_PLATFORM = 'shopify_backfill_2026';
 const SHOPIFY_LIMIT = 250;
-const ORDER_FIELDS = [
-  'id',
-  'name',
-  'currency',
-  'processed_at',
-  'created_at',
-  'updated_at',
-  'financial_status',
-  'fulfillment_status',
-  'cancelled_at',
-  'test',
-  'subtotal_price',
-  'total_tax',
-  'total_shipping_price_set',
-  'total_discounts',
-  'total_price',
-  'refunds',
-  'line_items',
-  'email',
-  'contact_email',
-  'shipping_address',
-  'billing_address',
-  'source_name'
-].join(',');
 
 type ShopifyTransaction = {
   kind?: string | null;
@@ -79,14 +54,16 @@ type ShopifyOrder = {
   source_name?: string | null;
 };
 
-type ShopifyOrdersResponse = {
+type ProxyOrdersResponse = {
+  ok?: boolean;
   orders?: ShopifyOrder[];
+  count?: number;
+  error?: string;
 };
 
 type RuntimeConfig = {
-  shopDomain: string;
-  accessToken: string;
-  apiVersion: string;
+  proxyWebhookUrl: string;
+  proxySecret: string;
   cursorPlatform: string;
   createdAtMin: string;
   startSinceId?: string;
@@ -97,8 +74,7 @@ type RuntimeConfig = {
   includeRawJson: boolean;
 };
 
-function loadDotEnv() {
-  const envPath = resolve(process.cwd(), '.env');
+function loadDotEnvFile(envPath: string) {
   if (!existsSync(envPath)) return;
 
   const lines = readFileSync(envPath, 'utf8').split(/\r?\n/);
@@ -124,6 +100,11 @@ function loadDotEnv() {
   }
 }
 
+function loadDotEnv() {
+  loadDotEnvFile(resolve(process.cwd(), '.env'));
+  loadDotEnvFile(resolve(process.cwd(), '..', '.env'));
+}
+
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`Missing required env var: ${name}`);
@@ -146,21 +127,32 @@ function optionalBool(name: string, fallback = false): boolean {
   return ['1', 'true', 'yes', 'si'].includes(raw);
 }
 
-function normalizeShopDomain(value: string): string {
-  const trimmed = value.trim().replace(/\/+$/, '');
-  const withoutProtocol = trimmed.replace(/^https?:\/\//i, '');
-  const domain = withoutProtocol.split('/')[0];
-  if (!domain.includes('.')) {
-    throw new Error('SHOPIFY_SHOP_DOMAIN must look like tienda.myshopify.com');
+function normalizeWebhookUrl(value: string): string {
+  const url = new URL(value);
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('N8N_SHOPIFY_ORDERS_PROXY_WEBHOOK_URL must be an http(s) URL');
   }
-  return domain;
+  return url.toString();
+}
+
+function readProxyWebhookUrl(): string {
+  const explicit = process.env.N8N_SHOPIFY_ORDERS_PROXY_WEBHOOK_URL?.trim();
+  if (explicit) return normalizeWebhookUrl(explicit);
+
+  const base = (process.env.N8N_BASE_URL || process.env.N8N_URL)?.trim().replace(/\/+$/, '');
+  if (base) return normalizeWebhookUrl(`${base}/webhook/shopify-orders-page`);
+
+  throw new Error(
+    'Missing required env var: N8N_SHOPIFY_ORDERS_PROXY_WEBHOOK_URL, N8N_BASE_URL, or N8N_URL'
+  );
 }
 
 function readConfig(): RuntimeConfig {
   return {
-    shopDomain: normalizeShopDomain(requiredEnv('SHOPIFY_SHOP_DOMAIN')),
-    accessToken: requiredEnv('SHOPIFY_ADMIN_ACCESS_TOKEN'),
-    apiVersion: process.env.SHOPIFY_API_VERSION?.trim() || DEFAULT_API_VERSION,
+    proxyWebhookUrl: readProxyWebhookUrl(),
+    proxySecret:
+      process.env.N8N_SHOPIFY_ORDERS_PROXY_SECRET?.trim() ||
+      requiredEnv('N8N_SEND_APPROVED_SECRET'),
     cursorPlatform:
       process.env.SHOPIFY_BACKFILL_CURSOR_PLATFORM?.trim() || DEFAULT_CURSOR_PLATFORM,
     createdAtMin:
@@ -172,18 +164,6 @@ function readConfig(): RuntimeConfig {
     dryRun: optionalBool('SHOPIFY_BACKFILL_DRY_RUN'),
     includeRawJson: optionalBool('SHOPIFY_BACKFILL_INCLUDE_RAW_JSON')
   };
-}
-
-function buildOrdersUrl(config: RuntimeConfig, sinceId: string): URL {
-  const url = new URL(
-    `https://${config.shopDomain}/admin/api/${config.apiVersion}/orders.json`
-  );
-  url.searchParams.set('status', 'any');
-  url.searchParams.set('limit', String(SHOPIFY_LIMIT));
-  url.searchParams.set('created_at_min', config.createdAtMin);
-  url.searchParams.set('fields', ORDER_FIELDS);
-  if (sinceId !== '0') url.searchParams.set('since_id', sinceId);
-  return url;
 }
 
 function toUtc(value: string | null | undefined): string | null {
@@ -260,33 +240,39 @@ function retryAfterMs(response: Response, fallbackMs: number): number {
   return Number.isFinite(seconds) ? Math.max(1000, seconds * 1000) : fallbackMs;
 }
 
-async function fetchOrdersPage(config: RuntimeConfig, sinceId: string): Promise<{
-  orders: ShopifyOrder[];
-  callLimit: string | null;
-}> {
-  const url = buildOrdersUrl(config, sinceId);
+async function fetchOrdersPage(
+  config: RuntimeConfig,
+  sinceId: string
+): Promise<ShopifyOrder[]> {
   let delayMs = 2000;
 
   for (let attempt = 1; attempt <= 6; attempt += 1) {
-    const response = await fetch(url, {
+    const response = await fetch(config.proxyWebhookUrl, {
+      method: 'POST',
       headers: {
         Accept: 'application/json',
-        'X-Shopify-Access-Token': config.accessToken
-      }
+        'Content-Type': 'application/json',
+        'X-Review-Admin-Token': config.proxySecret
+      },
+      body: JSON.stringify({
+        since_id: sinceId,
+        created_at_min: config.createdAtMin,
+        limit: SHOPIFY_LIMIT
+      })
     });
 
     if (response.ok) {
-      const body = (await response.json()) as ShopifyOrdersResponse;
-      return {
-        orders: Array.isArray(body.orders) ? body.orders : [],
-        callLimit: response.headers.get('x-shopify-shop-api-call-limit')
-      };
+      const body = (await response.json()) as ProxyOrdersResponse;
+      if (!body.ok) {
+        throw new Error(`n8n proxy returned ok=false: ${body.error || 'unknown_error'}`);
+      }
+      return Array.isArray(body.orders) ? body.orders : [];
     }
 
     if (response.status === 429 || response.status >= 500) {
       const waitMs = response.status === 429 ? retryAfterMs(response, delayMs) : delayMs;
       console.warn(
-        `Shopify ${response.status} en intento ${attempt}/6. Reintentando en ${waitMs} ms.`
+        `n8n proxy ${response.status} en intento ${attempt}/6. Reintentando en ${waitMs} ms.`
       );
       await sleep(waitMs);
       delayMs = Math.min(delayMs * 2, 30_000);
@@ -294,23 +280,10 @@ async function fetchOrdersPage(config: RuntimeConfig, sinceId: string): Promise<
     }
 
     const body = await response.text().catch(() => '');
-    throw new Error(`Shopify request failed ${response.status}: ${body.slice(0, 600)}`);
+    throw new Error(`n8n proxy request failed ${response.status}: ${body.slice(0, 600)}`);
   }
 
-  throw new Error('Shopify request failed after retries');
-}
-
-async function throttleFromCallLimit(callLimit: string | null, baseDelayMs: number) {
-  if (callLimit) {
-    const [usedRaw, limitRaw] = callLimit.split('/');
-    const used = Number.parseInt(usedRaw, 10);
-    const limit = Number.parseInt(limitRaw, 10);
-    if (Number.isFinite(used) && Number.isFinite(limit) && limit - used <= 5) {
-      await sleep(3000);
-      return;
-    }
-  }
-  if (baseDelayMs > 0) await sleep(baseDelayMs);
+  throw new Error('n8n proxy request failed after retries');
 }
 
 async function upsertInChunks(
@@ -365,9 +338,8 @@ async function main() {
         : cursor.since_id || '0';
     lastUpdatedAt = cursor.cursor || runtimeConfig.createdAtMin;
 
-    console.log(`Backfill Shopify 2026 iniciado.`);
-    console.log(`Tienda: ${runtimeConfig.shopDomain}`);
-    console.log(`API version: ${runtimeConfig.apiVersion}`);
+    console.log('Backfill Shopify 2026 iniciado via n8n proxy.');
+    console.log(`Webhook n8n: ${runtimeConfig.proxyWebhookUrl}`);
     console.log(`Cursor platform: ${runtimeConfig.cursorPlatform}`);
     console.log(`created_at_min: ${runtimeConfig.createdAtMin}`);
     console.log(`since_id inicial: ${sinceId}`);
@@ -375,11 +347,11 @@ async function main() {
 
     while (runtimeConfig.maxPages === 0 || page < runtimeConfig.maxPages) {
       page += 1;
-      const { orders: rawOrders, callLimit } = await fetchOrdersPage(runtimeConfig, sinceId);
+      const rawOrders = await fetchOrdersPage(runtimeConfig, sinceId);
       const orders = rawOrders.map((order) => mapOrder(order, runtimeConfig.includeRawJson));
 
       if (orders.length === 0) {
-        console.log(`Pagina ${page}: Shopify devolvio 0 pedidos. Backfill completado.`);
+        console.log(`Pagina ${page}: n8n/Shopify devolvio 0 pedidos. Backfill completado.`);
         break;
       }
 
@@ -410,11 +382,8 @@ async function main() {
           `pedidos ${orders.length}`,
           `total corrida ${totalImported}`,
           `last_since_id ${sinceId}`,
-          callLimit ? `shopify calls ${callLimit}` : null,
           runtimeConfig.dryRun ? 'dry-run sin guardar' : 'guardado'
-        ]
-          .filter(Boolean)
-          .join(' | ')
+        ].join(' | ')
       );
 
       if (orders.length < SHOPIFY_LIMIT) {
@@ -422,7 +391,7 @@ async function main() {
         break;
       }
 
-      await throttleFromCallLimit(callLimit, runtimeConfig.pageDelayMs);
+      if (runtimeConfig.pageDelayMs > 0) await sleep(runtimeConfig.pageDelayMs);
     }
 
     if (runtimeConfig.maxPages > 0 && page >= runtimeConfig.maxPages) {

@@ -2,13 +2,21 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a temporary n8n workflow that imports every Shopify order from `2026-01-01T00:00:00.000Z` onward in bounded 250-order pages, without duplicating existing `PlatformOrder` rows.
+**Goal:** Import every Shopify order from `2026-01-01T00:00:00.000Z` onward in 250-order pages, without duplicating existing `PlatformOrder` rows.
 
-**Architecture:** Create a separate n8n workflow JSON based on `workflows/shopify-finanzas-sync.json`. The workflow uses a Manual Trigger, reads the same admin settings and Shopify credential, reads/writes an isolated cursor under platform `shopify_backfill_2026`, loops with `sinceId`, posts each non-empty batch to `POST /api/n8n/orders`, persists page progress through `POST /api/n8n/sync-state`, caps each manual execution at 10 Shopify pages, and ends with one summary item.
+**Architecture:** The current implementation uses a tiny n8n webhook proxy only to access the existing Shopify credential. The Review Admin script `scripts/backfill-shopify-orders-2026.ts` owns the loop, reads/writes the isolated cursor under platform `shopify_backfill_2026`, maps orders, and saves them through `upsertPlatformOrders`.
 
-**Tech Stack:** n8n workflow JSON, Shopify n8n node, DataTable node, HTTP Request node, Code node JavaScript, Review Admin `/api/n8n/orders`.
+**Tech Stack:** n8n Webhook, Shopify n8n node, DataTable node, Code node JavaScript, Respond to Webhook, Node/tsx script, Prisma, `PlatformOrder`.
 
-**Runtime correction:** Large manual executions still accumulate live editor/canvas data in n8n even when execution saving is disabled. The workflow must therefore stop after `max_pages_per_run: 10` pages, show `Resumen final.has_more_pages`, and rely on the persisted `shopify_backfill_2026` cursor so the next manual run continues from the last saved Shopify ID instead of starting from zero.
+**Runtime correction:** Large manual executions still accumulate live editor/canvas data in n8n even when execution saving is disabled. The final architecture avoids that by making n8n return only one Shopify page per webhook call; the script can run for many pages without n8n holding the whole backfill execution.
+
+**Current run command:**
+
+```powershell
+npm run backfill:shopify-orders:2026
+```
+
+Required runtime settings are `DATABASE_URL`, `N8N_SEND_APPROVED_SECRET`, and either `N8N_SHOPIFY_ORDERS_PROXY_WEBHOOK_URL`, `N8N_BASE_URL`, or `N8N_URL`.
 
 ---
 
