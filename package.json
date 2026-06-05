@@ -13,7 +13,8 @@
     "prisma:migrate": "prisma migrate deploy",
     "prisma:dev": "prisma migrate dev",
     "seed:admin": "tsx scripts/seed-admin.ts",
-    "wipe:tickets": "tsx scripts/wipe-tickets.ts"
+    "wipe:tickets": "tsx scripts/wipe-tickets.ts",
+    "backfill:shopify-orders:2026": "tsx scripts/backfill-shopify-orders-2026.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
