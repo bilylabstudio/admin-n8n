@@ -29,7 +29,7 @@ export function ticketToThreadMessages(ticket: ThreadTicket): ThreadMessageView[
       subject: ticket.subject,
       text: ticket.originalText,
       at: ticket.receivedAt.toISOString(),
-      status: ticket.status,
+      status: null,
       customerName: ticket.customerName,
       tags: getTicketTags(ticket)
     }
