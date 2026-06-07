@@ -79,7 +79,7 @@ export default async function TicketDetailPage({
             <tbody>
               {ticket.auditEvents.map((event) => (
                 <tr key={event.id}>
-                  <td>{event.createdAt.toLocaleString('es-ES')}</td>
+                  <td>{event.createdAt.toLocaleString('es-ES', { timeZone: 'Europe/Madrid' })}</td>
                   <td>{event.eventType}</td>
                   <td>{event.user?.email || '-'}</td>
                   <td>{event.beforeStatus || '-'} -&gt; {event.afterStatus || '-'}</td>

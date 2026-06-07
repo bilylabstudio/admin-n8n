@@ -48,7 +48,11 @@ const PLATFORMS: { id: Platform; label: string }[] = [
 ];
 
 function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Europe/Madrid'
+  }).format(new Date(iso));
 }
 
 function formatRelative(iso: string) {
@@ -444,6 +448,11 @@ function RawOrdersSection({ platform, currency }: { platform: Platform; currency
 
 function formatFullDate(iso: string) {
   return new Intl.DateTimeFormat('es-ES', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit'
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Madrid'
   }).format(new Date(iso));
 }

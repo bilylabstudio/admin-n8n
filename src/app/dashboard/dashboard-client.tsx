@@ -46,7 +46,11 @@ const STATUS_COLORS: Record<string, string> = {
 const POLL_MS = 30_000;
 
 function formatDate(iso: string) {
-  return new Intl.DateTimeFormat('es-ES', { day: '2-digit', month: '2-digit' }).format(new Date(iso));
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    timeZone: 'Europe/Madrid'
+  }).format(new Date(iso));
 }
 
 function formatRelative(iso: string) {

@@ -701,7 +701,8 @@ function formatDate(value: string) {
     day: '2-digit',
     month: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: 'Europe/Madrid'
   }).format(new Date(value));
 }
 
