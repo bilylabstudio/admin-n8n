@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { markSeen, type WebmailSyncResult } from '@/lib/webmail-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,7 +44,13 @@ export async function POST(request: Request) {
 
   const tickets = await db.ticket.findMany({
     where,
-    select: { id: true, status: true }
+    select: {
+      id: true,
+      imapMailbox: true,
+      imapUid: true,
+      seenSyncedAt: true,
+      status: true
+    }
   });
 
   if (!tickets.length) {
@@ -51,12 +58,40 @@ export async function POST(request: Request) {
   }
 
   const ids = tickets.map((ticket) => ticket.id);
+  const seenResults = await Promise.all(
+    tickets.map(async (ticket) => {
+      const result: WebmailSyncResult = ticket.seenSyncedAt
+        ? { ok: true, skipped: true, action: 'seen', message: 'already_seen_synced' }
+        : await markSeen({ uid: ticket.imapUid, mailbox: ticket.imapMailbox });
+      return { result, ticketId: ticket.id };
+    })
+  );
+  const seenByTicketId = new Map(seenResults.map((item) => [item.ticketId, item.result]));
+  const seenSyncedIds = seenResults
+    .filter((item) => item.result.ok && !item.result.skipped)
+    .map((item) => item.ticketId);
+  const seenFailedResults = seenResults.filter((item) => !item.result.ok);
+  const syncNow = new Date();
 
   await db.$transaction([
     db.ticket.updateMany({
       where: { id: { in: ids }, status: 'pending_review' },
       data: { status: 'discarded' }
     }),
+    ...(seenSyncedIds.length
+      ? [
+          db.ticket.updateMany({
+            where: { id: { in: seenSyncedIds } },
+            data: { seenSyncedAt: syncNow, webmailSyncError: null }
+          })
+        ]
+      : []),
+    ...seenFailedResults.map((item) =>
+      db.ticket.update({
+        where: { id: item.ticketId },
+        data: { webmailSyncError: item.result.message || 'webmail_seen_failed' }
+      })
+    ),
     db.auditEvent.createMany({
       data: tickets.map((ticket) => ({
         ticketId: ticket.id,
@@ -66,7 +101,10 @@ export async function POST(request: Request) {
         afterStatus: 'discarded',
         metadataJson: {
           bulk: true,
-          mode
+          mode,
+          webmail_sync: {
+            seen: seenByTicketId.get(ticket.id)
+          }
         }
       }))
     })

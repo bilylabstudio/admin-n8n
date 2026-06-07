@@ -5,6 +5,7 @@ import { sendApprovedReply } from '@/lib/n8n';
 import {
   appendSentCopy,
   buildRfc822Message,
+  markAnswered,
   type WebmailSyncResult
 } from '@/lib/webmail-sync';
 
@@ -76,6 +77,11 @@ export async function POST(
     );
   }
 
+  const answeredSync = await markAnswered({
+    uid: ticket.imapUid,
+    mailbox: ticket.imapMailbox
+  });
+
   let sentCopySync: WebmailSyncResult = {
     ok: true,
     skipped: true,
@@ -101,6 +107,23 @@ export async function POST(
   }
 
   const sentAt = result.sent_at ? new Date(result.sent_at) : new Date();
+  const syncNow = new Date();
+  const webmailSyncError = [answeredSync, sentCopySync]
+    .filter((item) => !item.ok)
+    .map((item) => `${item.action}:${item.message || 'failed'}`)
+    .join('; ');
+
+  await db.ticket.update({
+    where: { id: ticket.id },
+    data: {
+      seenSyncedAt:
+        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.seenSyncedAt,
+      answeredSyncedAt:
+        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.answeredSyncedAt,
+      webmailSyncError: webmailSyncError || null
+    }
+  });
+
   const threadMessage = await db.threadMessage.create({
     data: {
       customerEmail: ticket.customerEmail,
@@ -115,6 +138,7 @@ export async function POST(
       rawJson: {
         result,
         webmail_sync: {
+          answered: answeredSync,
           sent_copy: sentCopySync
         }
       }
@@ -133,6 +157,7 @@ export async function POST(
         thread_message_id: threadMessage.id,
         result,
         webmail_sync: {
+          answered: answeredSync,
           sent_copy: sentCopySync
         }
       }
@@ -144,6 +169,9 @@ export async function POST(
     threadMessageId: threadMessage.id,
     sentAt: sentAt.toISOString(),
     providerMessageId: result.provider_message_id || null,
-    webmailSync: sentCopySync
+    webmailSync: {
+      answered: answeredSync,
+      sentCopy: sentCopySync
+    }
   });
 }

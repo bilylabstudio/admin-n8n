@@ -246,19 +246,6 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     [activeGroup, query]
   );
 
-  const markTicketSeen = useCallback(async (ticket: Ticket) => {
-    if (!ticket.imapUid || ticket.seenSyncedAt) return;
-    try {
-      await fetch(`/api/tickets/${ticket.id}/webmail-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'seen' })
-      });
-    } catch {
-      // El ticket sigue siendo usable aunque falle la marca de lectura en webmail.
-    }
-  }, []);
-
   const loadConversation = useCallback(async (email: string, ticketId?: string | null) => {
     setSelectedCustomerEmail(email);
     setCustomerProfile(EMPTY_CUSTOMER_PROFILE);
@@ -338,7 +325,6 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
     setDraft('');
     setDirty(false);
     setNotice('');
-    void markTicketSeen(ticket);
     setMobilePanel('detail');
   };
 
