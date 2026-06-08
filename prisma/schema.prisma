@@ -96,6 +96,11 @@ model Ticket {
   intent                String?
   riskFlags             String?
   escalationRecommended Boolean      @default(false)
+  aiConfidence          Float?
+  confidenceLabel       String?
+  requiresReview        Boolean      @default(false)
+  caseReasoningJson     Json?
+  criticJson            Json?
   status                TicketStatus @default(pending_review)
   approvedByUserId      String?
   sentAt                DateTime?
@@ -271,4 +276,22 @@ model PlatformSyncState {
   lastSyncStatus String?
   lastSyncError  String?
   ordersImported Int       @default(0)
+}
+
+model SupportApprovedResponse {
+  id               String   @id @default(cuid())
+  caseId           String   @unique @map("case_id")
+  family           String
+  subintent        String
+  customerExample  String   @map("customer_example")
+  approvedResponse String   @map("approved_response")
+  mustInclude      Json?    @map("must_include")
+  mustNotInclude   Json?    @map("must_not_include")
+  status           String
+  priority         Int      @default(0)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([status, family, subintent])
+  @@map("support_approved_responses")
 }

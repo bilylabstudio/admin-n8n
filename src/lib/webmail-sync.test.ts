@@ -23,6 +23,7 @@ describe('webmail sync config', () => {
     });
 
     expect(config.enabled).toBe(false);
+    if (config.enabled) throw new Error('expected disabled webmail config');
     expect(config.reason).toContain('WEBMAIL_IMAP_USER');
   });
 });

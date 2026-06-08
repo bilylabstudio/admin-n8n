@@ -36,6 +36,11 @@ describe('ingestTicket', () => {
       intent: 'question',
       risk_flags: '',
       escalation_recommended: false,
+      ai_confidence: 0.42,
+      confidence_label: 'baja',
+      requires_review: true,
+      case_reasoning: { family: 'mensaje_simple', diagnosis: 'cierre' },
+      critic: { safe: true, issues: [] },
       source: 'webmail',
       imap_uid: '123',
       imap_mailbox: 'INBOX',
@@ -51,14 +56,24 @@ describe('ingestTicket', () => {
           imapMailbox: 'INBOX',
           messageId: '<message-id-1@example.com>',
           inReplyTo: '<previous@example.com>',
-          references: '<root@example.com> <previous@example.com>'
+          references: '<root@example.com> <previous@example.com>',
+          aiConfidence: 0.42,
+          confidenceLabel: 'baja',
+          requiresReview: true,
+          caseReasoningJson: { family: 'mensaje_simple', diagnosis: 'cierre' },
+          criticJson: { safe: true, issues: [] }
         }),
         update: expect.objectContaining({
           imapUid: '123',
           imapMailbox: 'INBOX',
           messageId: '<message-id-1@example.com>',
           inReplyTo: '<previous@example.com>',
-          references: '<root@example.com> <previous@example.com>'
+          references: '<root@example.com> <previous@example.com>',
+          aiConfidence: 0.42,
+          confidenceLabel: 'baja',
+          requiresReview: true,
+          caseReasoningJson: { family: 'mensaje_simple', diagnosis: 'cierre' },
+          criticJson: { safe: true, issues: [] }
         })
       })
     );
