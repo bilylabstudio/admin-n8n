@@ -67,6 +67,25 @@ type InboxResponse = {
   error?: string;
 };
 
+type SentExportPayload = {
+  exportedAt: string;
+  scope: 'all_sent';
+  count: number;
+  messages: Array<{
+    id: string;
+    customerName: string | null;
+    customerEmail: string;
+    subject: string;
+    receivedAt: string;
+    sentAt: string | null;
+    status: TicketStatus;
+    wasEditedAndSent: boolean;
+    originalMessage: string;
+    aiMessage: string;
+    sentMessage: string;
+  }>;
+};
+
 type CustomerEntry = {
   email: string;
   name: string | null;
@@ -155,6 +174,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [statusRailCollapsed, setStatusRailCollapsed] = useState(false);
   const [ticketListCollapsed, setTicketListCollapsed] = useState(false);
   const [exportSelection, setExportSelection] = useState<Set<string>>(() => new Set());
+  const [exportingAllSent, setExportingAllSent] = useState(false);
 
   const visibleTickets = useMemo(() => {
     if (activeTagFilter === 'all') return tickets;
@@ -384,18 +404,37 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
       }))
     };
 
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json;charset=utf-8'
-    });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `vgummies-enviados-${new Date().toISOString().slice(0, 10)}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
+    downloadJsonPayload(payload, `vgummies-enviados-${new Date().toISOString().slice(0, 10)}.json`);
     setNotice(`Descargados ${selectedExportTickets.length} mensajes`);
+  };
+
+  const downloadAllSentJson = async () => {
+    if (!isSentGroup || exportingAllSent) return;
+
+    setExportingAllSent(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/tickets/export/sent', { cache: 'no-store' });
+      const data = (await response.json().catch(() => null)) as
+        | SentExportPayload
+        | { error?: string }
+        | null;
+
+      if (!response.ok || !isSentExportPayload(data)) {
+        throw new Error(readExportError(data));
+      }
+
+      downloadJsonPayload(
+        data,
+        `vgummies-enviados-todos-${new Date().toISOString().slice(0, 10)}.json`
+      );
+      setNotice(`Descargados ${data.count} mensajes enviados`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo descargar el historico de enviados.');
+    } finally {
+      setExportingAllSent(false);
+    }
   };
 
   const discardPendingTickets = async (ticketIds: string[]) => {
@@ -750,6 +789,14 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                     disabled={!selectedExportTickets.length}
                   >
                     Descargar JSON
+                  </button>
+                  <button
+                    className="export-download-btn"
+                    type="button"
+                    onClick={downloadAllSentJson}
+                    disabled={exportingAllSent}
+                  >
+                    {exportingAllSent ? 'Descargando...' : 'Descargar todos'}
                   </button>
                 </div>
               ) : null}
@@ -1548,6 +1595,38 @@ function StatusBadge({ status }: { status: TicketStatus }) {
   return (
     <span className={`status-badge tone-${statusTone[status]}`}>{labelForStatus(status)}</span>
   );
+}
+
+function isSentExportPayload(value: unknown): value is SentExportPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<SentExportPayload>;
+  return (
+    payload.scope === 'all_sent' &&
+    typeof payload.count === 'number' &&
+    Array.isArray(payload.messages)
+  );
+}
+
+function readExportError(value: unknown) {
+  if (!value || typeof value !== 'object') return 'No se pudo descargar el historico de enviados.';
+  const maybeError = (value as { error?: unknown }).error;
+  return typeof maybeError === 'string' && maybeError.trim()
+    ? maybeError
+    : 'No se pudo descargar el historico de enviados.';
+}
+
+function downloadJsonPayload(payload: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: 'application/json;charset=utf-8'
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function formatDate(value: string) {

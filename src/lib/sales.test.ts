@@ -95,6 +95,24 @@ describe('aggregate', () => {
     ]);
   });
 
+  it('aggregates Shopify and Amazon together while preserving byPlatform totals', () => {
+    const orders: AggregateInput[] = [
+      order({ platform: 'shopify', processedAt: new Date('2026-06-01T10:00:00Z'), totalPrice: 120 as never, totalUnits: 2 }),
+      order({ platform: 'amazon', processedAt: new Date('2026-06-01T11:00:00Z'), totalPrice: 80 as never, totalUnits: 1 }),
+      order({ platform: 'amazon', processedAt: new Date('2026-06-02T11:00:00Z'), totalPrice: 20 as never, totalUnits: 1 })
+    ];
+
+    const { kpis, byPlatform } = aggregate(orders);
+
+    expect(kpis.totalOrders).toBe(3);
+    expect(kpis.grossRevenue).toBe(220);
+    expect(kpis.totalUnits).toBe(4);
+    expect(byPlatform).toEqual([
+      { platform: 'shopify', orders: 1, revenue: 120 },
+      { platform: 'amazon', orders: 2, revenue: 100 }
+    ]);
+  });
+
   it('counts a partially_refunded order as refunded even with refund amount 0', () => {
     const orders: AggregateInput[] = [
       order({ processedAt: new Date('2026-05-10T10:00:00Z'), financialStatus: 'partially_refunded' }),

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Period = 'ytd' | '7d' | '30d' | '90d';
-type Platform = 'all' | 'shopify';
+type Platform = 'all' | 'shopify' | 'amazon';
 
 type SyncStateView = {
   platform: string;
@@ -44,7 +44,8 @@ const PERIODS: { id: Period; label: string }[] = [
 ];
 const PLATFORMS: { id: Platform; label: string }[] = [
   { id: 'all', label: 'Todas' },
-  { id: 'shopify', label: 'Shopify' }
+  { id: 'shopify', label: 'Shopify' },
+  { id: 'amazon', label: 'Amazon' }
 ];
 
 function formatDate(iso: string) {
@@ -70,6 +71,16 @@ function formatMoney(value: number, currency: string) {
   } catch {
     return `${value.toFixed(2)} ${currency}`;
   }
+}
+
+function formatPlatformName(value: string) {
+  const labels: Record<string, string> = {
+    amazon: 'Amazon',
+    amazon_backfill_2026: 'Amazon backfill 2026',
+    shopify: 'Shopify',
+    shopify_backfill_2026: 'Shopify backfill 2026'
+  };
+  return labels[value] || `${value[0]?.toUpperCase() || ''}${value.slice(1).replace(/_/g, ' ')}`;
 }
 
 function formatNumber(value: number, digits = 0) {
@@ -150,7 +161,7 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
           const failed = s.lastSyncStatus === 'failed';
           return (
             <div key={s.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <strong style={{ textTransform: 'capitalize' }}>{s.platform}</strong>
+              <strong>{formatPlatformName(s.platform)}</strong>
               <span style={{ color: ok ? 'var(--gummy-teal)' : failed ? 'var(--error-red)' : 'var(--ink-soft)' }}>
                 {ok ? '✓ OK' : failed ? '✕ Error' : '— Sin info'}
               </span>
@@ -306,7 +317,7 @@ export function SalesClient() {
                     return (
                       <PercentBar
                         key={p.platform}
-                        label={`${p.platform[0].toUpperCase()}${p.platform.slice(1)} · ${formatNumber(p.orders)} pedidos`}
+                        label={`${formatPlatformName(p.platform)} · ${formatNumber(p.orders)} pedidos`}
                         value={pct}
                         hint={`${formatMoney(p.revenue, currency)} · ${pct}%`}
                       />
