@@ -1,6 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { aggregate, resolveSalesDateRange, viewSyncState } from '@/lib/sales';
+import { aggregate, chartGranularityForRange, resolveSalesDateRange, viewSyncState } from '@/lib/sales';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,10 +42,12 @@ export async function GET(request: Request) {
     db.platformSyncState.findMany()
   ]);
 
-  const { kpis, byDay, byPlatform } =
-    range.period === 'ytd'
-      ? aggregate(orders)
-      : aggregate(orders, { since: range.since, until: range.until });
+  const chartGranularity = chartGranularityForRange(range.since, range.until);
+  const { kpis, byDay, byPlatform } = aggregate(orders, {
+    since: range.since,
+    until: range.until,
+    granularity: chartGranularity
+  });
 
   return Response.json({
     ok: true,
@@ -55,6 +57,7 @@ export async function GET(request: Request) {
     until: range.until.toISOString(),
     startDate: range.startDate,
     endDate: range.endDate,
+    chartGranularity,
     syncState: viewSyncState(syncState),
     kpis,
     byDay,

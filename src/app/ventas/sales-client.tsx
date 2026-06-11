@@ -12,6 +12,7 @@ import {
 
 type Period = PresetPeriod | 'custom';
 type Platform = 'all' | 'shopify' | 'amazon';
+type ChartGranularity = 'day' | 'month';
 
 type SyncStateView = {
   platform: string;
@@ -29,6 +30,7 @@ type SalesData = {
   until: string;
   startDate: string;
   endDate: string;
+  chartGranularity: ChartGranularity;
   syncState: SyncStateView[];
   kpis: {
     grossRevenue: number;
@@ -64,6 +66,17 @@ function formatDate(iso: string) {
     month: '2-digit',
     timeZone: 'Europe/Madrid'
   }).format(new Date(iso));
+}
+
+function formatChartDate(iso: string, granularity: ChartGranularity) {
+  if (granularity === 'month') {
+    return new Intl.DateTimeFormat('es-ES', {
+      month: 'short',
+      year: '2-digit',
+      timeZone: 'UTC'
+    }).format(new Date(`${iso.slice(0, 10)}T00:00:00.000Z`));
+  }
+  return formatDate(iso);
 }
 
 function formatRelative(iso: string) {
@@ -135,12 +148,14 @@ function SalesBarChart({
   data,
   valueKey,
   currency,
-  kind
+  kind,
+  granularity
 }: {
   data: { date: string; [k: string]: number | string }[];
   valueKey: 'revenue' | 'orders';
   currency: string;
   kind: 'money' | 'count';
+  granularity: ChartGranularity;
 }) {
   if (!data.length) {
     return <div className="empty-state" style={{ minHeight: 100 }}>Sin datos en el periodo.</div>;
@@ -153,7 +168,14 @@ function SalesBarChart({
   const labelEvery = Math.max(1, Math.ceil(data.length / 8));
   const formatValue = (value: number) => (kind === 'money' ? formatCompactMoney(value, currency) : formatCompactNumber(value));
   const formatFullValue = (value: number) => (kind === 'money' ? formatMoney(value, currency) : `${formatNumber(value)} pedidos`);
-  const activeDaysLabel = kind === 'money' ? 'dias con venta' : 'dias con pedidos';
+  const activePeriodLabel =
+    granularity === 'month'
+      ? kind === 'money'
+        ? 'meses con venta'
+        : 'meses con pedidos'
+      : kind === 'money'
+        ? 'dias con venta'
+        : 'dias con pedidos';
 
   return (
     <div className="sales-chart">
@@ -176,11 +198,11 @@ function SalesBarChart({
                 <div
                   className={value > 0 ? 'sales-chart-bar' : 'sales-chart-bar empty'}
                   style={{ height: `${Math.max(value > 0 ? 4 : 0, pct)}%` }}
-                  title={`${formatDate(d.date)} · ${formatFullValue(value)}`}
+                  title={`${formatChartDate(String(d.date), granularity)} · ${formatFullValue(value)}`}
                 />
               </div>
               {i % labelEvery === 0 || i === data.length - 1 ? (
-                <span className="sales-chart-label">{formatDate(d.date)}</span>
+                <span className="sales-chart-label">{formatChartDate(String(d.date), granularity)}</span>
               ) : (
                 <span className="sales-chart-label ghost">&nbsp;</span>
               )}
@@ -191,19 +213,30 @@ function SalesBarChart({
       <div className="sales-chart-stats">
         <span>Max {formatFullValue(actualMax)}</span>
         <span>Prom {formatFullValue(average)}</span>
-        <span>{nonZeroValues.length} {activeDaysLabel}</span>
+        <span>{nonZeroValues.length} {activePeriodLabel}</span>
       </div>
     </div>
   );
 }
 
-function BarChart({ data, valueKey, currency }: { data: { date: string; [k: string]: number | string }[]; valueKey: 'revenue' | 'orders'; currency: string }) {
+function BarChart({
+  data,
+  valueKey,
+  currency,
+  granularity
+}: {
+  data: { date: string; [k: string]: number | string }[];
+  valueKey: 'revenue' | 'orders';
+  currency: string;
+  granularity: ChartGranularity;
+}) {
   return (
     <SalesBarChart
       data={data}
       valueKey={valueKey}
       currency={currency}
       kind={valueKey === 'revenue' ? 'money' : 'count'}
+      granularity={granularity}
     />
   );
 }
@@ -319,6 +352,8 @@ export function SalesClient() {
   const currency = data?.kpis.currency ?? 'EUR';
   const totalByPlatformRevenue = data?.byPlatform.reduce((s, p) => s + p.revenue, 0) ?? 0;
   const weekPresets = buildMonthWeekPresets(weekPresetMonth);
+  const chartGranularity = data?.chartGranularity ?? 'day';
+  const chartPeriodLabel = chartGranularity === 'month' ? 'mes' : 'día';
   const selectedRangeLabel = data
     ? `${formatInputDate(data.startDate)} - ${formatInputDate(data.endDate)}`
     : `${formatInputDate(rangeStart)} - ${formatInputDate(rangeEnd)}`;
@@ -482,16 +517,16 @@ export function SalesClient() {
 
             <div className="db-two-col">
               <section className="db-section panel">
-                <h2 className="db-section-title">Ingresos por día</h2>
-                <BarChart data={data.byDay} valueKey="revenue" currency={currency} />
+                <h2 className="db-section-title">Ingresos por {chartPeriodLabel}</h2>
+                <BarChart data={data.byDay} valueKey="revenue" currency={currency} granularity={chartGranularity} />
                 <p className="db-chart-total">
                   {formatMoney(data.kpis.grossRevenue, currency)} en total · {selectedRangeLabel}
                 </p>
               </section>
 
               <section className="db-section panel">
-                <h2 className="db-section-title">Pedidos por día</h2>
-                <BarChart data={data.byDay} valueKey="orders" currency={currency} />
+                <h2 className="db-section-title">Pedidos por {chartPeriodLabel}</h2>
+                <BarChart data={data.byDay} valueKey="orders" currency={currency} granularity={chartGranularity} />
                 <p className="db-chart-total">
                   {formatNumber(data.kpis.totalOrders)} pedidos en total
                 </p>

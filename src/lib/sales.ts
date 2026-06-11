@@ -31,6 +31,7 @@ export type SalesResponse = {
   until: string;
   startDate: string;
   endDate: string;
+  chartGranularity: ChartGranularity;
   syncState: SyncStateView[];
   kpis: SalesKpis;
   byDay: Array<{ date: string; orders: number; revenue: number; units: number }>;
@@ -45,7 +46,10 @@ export type AggregateInput = Pick<
 export type AggregateOptions = {
   since?: Date;
   until?: Date;
+  granularity?: ChartGranularity;
 };
+
+export type ChartGranularity = 'day' | 'month';
 
 export function isPeriod(value: string | null | undefined): value is Period {
   return value === 'ytd' || value === '7d' || value === '30d' || value === '90d';
@@ -142,10 +146,11 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
   const aov = totalOrders ? grossRevenue / totalOrders : 0;
 
   const currency = mostCommon(orders.map((o) => o.currency)) || 'EUR';
+  const granularity = options.granularity ?? 'day';
 
   const byDayMap = new Map<string, { orders: number; revenue: number; units: number }>();
   for (const o of orders) {
-    const date = o.processedAt.toISOString().slice(0, 10);
+    const date = bucketKey(o.processedAt, granularity);
     const cur = byDayMap.get(date) || { orders: 0, revenue: 0, units: 0 };
     cur.orders += 1;
     cur.revenue += toNumber(o.totalPrice);
@@ -154,7 +159,7 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
   }
   const byDay =
     options.since && options.until
-      ? fillDateRange(options.since, options.until, byDayMap)
+      ? fillDateRange(options.since, options.until, byDayMap, granularity)
       : [...byDayMap.entries()]
           .sort(([a], [b]) => a.localeCompare(b))
           .map(([date, v]) => ({ date, orders: v.orders, revenue: round2(v.revenue), units: v.units }));
@@ -185,6 +190,11 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
     byDay,
     byPlatform
   };
+}
+
+export function chartGranularityForRange(since: Date, until: Date): ChartGranularity {
+  const days = Math.max(1, Math.ceil((until.getTime() - since.getTime()) / 86_400_000));
+  return days > 62 ? 'month' : 'day';
 }
 
 export function viewSyncState(states: PlatformSyncState[]): SyncStateView[] {
@@ -223,20 +233,36 @@ function mostCommon<T>(arr: T[]): T | null {
 function fillDateRange(
   since: Date,
   until: Date,
-  byDayMap: Map<string, { orders: number; revenue: number; units: number }>
+  byDayMap: Map<string, { orders: number; revenue: number; units: number }>,
+  granularity: ChartGranularity
 ): SalesResponse['byDay'] {
   const result: SalesResponse['byDay'] = [];
-  const cursor = new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));
-  const end = new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate()));
+  const cursor =
+    granularity === 'month'
+      ? new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), 1))
+      : new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));
+  const end =
+    granularity === 'month'
+      ? new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), 1))
+      : new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate()));
 
   while (cursor.getTime() <= end.getTime()) {
-    const date = cursor.toISOString().slice(0, 10);
+    const date = bucketKey(cursor, granularity);
     const value = byDayMap.get(date) || { orders: 0, revenue: 0, units: 0 };
     result.push({ date, orders: value.orders, revenue: round2(value.revenue), units: value.units });
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
+    if (granularity === 'month') {
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    } else {
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
   }
 
   return result;
+}
+
+function bucketKey(date: Date, granularity: ChartGranularity): string {
+  const iso = date.toISOString();
+  return granularity === 'month' ? `${iso.slice(0, 7)}-01` : iso.slice(0, 10);
 }
 
 function parseDateInput(value: string, boundary: 'start' | 'end'): Date | null {

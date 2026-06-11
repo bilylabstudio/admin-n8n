@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { aggregate, sinceForPeriod, isPeriod, resolveSalesDateRange, type AggregateInput } from './sales';
+import {
+  aggregate,
+  chartGranularityForRange,
+  sinceForPeriod,
+  isPeriod,
+  resolveSalesDateRange,
+  type AggregateInput
+} from './sales';
 
 function order(partial: Partial<AggregateInput> & { processedAt: Date }): AggregateInput {
   return {
@@ -56,6 +63,23 @@ describe('resolveSalesDateRange', () => {
     expect(resolveSalesDateRange({ startParam: '2026-02-31', endParam: '2026-03-05' }).ok).toBe(false);
     expect(resolveSalesDateRange({ startParam: '2026-06-08', endParam: '2026-06-07' }).ok).toBe(false);
     expect(resolveSalesDateRange({ startParam: '2026-06-01' }).ok).toBe(false);
+  });
+});
+
+describe('chartGranularityForRange', () => {
+  it('keeps short ranges daily and switches long ranges to months', () => {
+    expect(
+      chartGranularityForRange(
+        new Date('2026-06-01T00:00:00.000Z'),
+        new Date('2026-06-07T23:59:59.999Z')
+      )
+    ).toBe('day');
+    expect(
+      chartGranularityForRange(
+        new Date('2026-01-01T00:00:00.000Z'),
+        new Date('2026-06-11T23:59:59.999Z')
+      )
+    ).toBe('month');
   });
 });
 
@@ -121,6 +145,27 @@ describe('aggregate', () => {
       { date: '2026-06-05', orders: 0, revenue: 0, units: 0 },
       { date: '2026-06-06', orders: 0, revenue: 0, units: 0 },
       { date: '2026-06-07', orders: 0, revenue: 0, units: 0 }
+    ]);
+  });
+
+  it('groups long chart ranges by month and fills empty months', () => {
+    const orders: AggregateInput[] = [
+      order({ processedAt: new Date('2026-01-10T10:00:00Z'), totalPrice: 100 as never, totalUnits: 2 }),
+      order({ processedAt: new Date('2026-01-20T10:00:00Z'), totalPrice: 50 as never, totalUnits: 1 }),
+      order({ processedAt: new Date('2026-03-02T10:00:00Z'), totalPrice: 75 as never, totalUnits: 1 })
+    ];
+
+    const { byDay } = aggregate(orders, {
+      since: new Date('2026-01-01T00:00:00.000Z'),
+      until: new Date('2026-04-30T23:59:59.999Z'),
+      granularity: 'month'
+    });
+
+    expect(byDay).toEqual([
+      { date: '2026-01-01', orders: 2, revenue: 150, units: 3 },
+      { date: '2026-02-01', orders: 0, revenue: 0, units: 0 },
+      { date: '2026-03-01', orders: 1, revenue: 75, units: 1 },
+      { date: '2026-04-01', orders: 0, revenue: 0, units: 0 }
     ]);
   });
 
