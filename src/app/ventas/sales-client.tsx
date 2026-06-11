@@ -97,6 +97,20 @@ function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
 }
 
+function formatCompactNumber(value: number) {
+  return new Intl.NumberFormat('es-ES', {
+    notation: value >= 1000 ? 'compact' : 'standard',
+    maximumFractionDigits: value >= 1000 ? 1 : 0
+  }).format(value);
+}
+
+function formatCompactMoney(value: number, currency: string) {
+  if (Math.abs(value) >= 1000) {
+    return `${formatCompactNumber(value)} ${currency}`;
+  }
+  return formatMoney(value, currency);
+}
+
 function formatInputDate(value: string) {
   return new Intl.DateTimeFormat('es-ES', {
     day: '2-digit',
@@ -117,29 +131,80 @@ function buildSalesQuery(period: Period, platform: Platform, startDate: string, 
   return params;
 }
 
-function BarChart({ data, valueKey }: { data: { date: string; [k: string]: number | string }[]; valueKey: string }) {
+function SalesBarChart({
+  data,
+  valueKey,
+  currency,
+  kind
+}: {
+  data: { date: string; [k: string]: number | string }[];
+  valueKey: 'revenue' | 'orders';
+  currency: string;
+  kind: 'money' | 'count';
+}) {
   if (!data.length) {
     return <div className="empty-state" style={{ minHeight: 100 }}>Sin datos en el periodo.</div>;
   }
   const values = data.map((d) => Number(d[valueKey] ?? 0));
-  const max = Math.max(...values, 1);
+  const actualMax = Math.max(...values, 0);
+  const scaleMax = Math.max(actualMax, 1);
+  const nonZeroValues = values.filter((value) => value > 0);
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const labelEvery = Math.max(1, Math.ceil(data.length / 8));
+  const formatValue = (value: number) => (kind === 'money' ? formatCompactMoney(value, currency) : formatCompactNumber(value));
+  const formatFullValue = (value: number) => (kind === 'money' ? formatMoney(value, currency) : `${formatNumber(value)} pedidos`);
+  const activeDaysLabel = kind === 'money' ? 'dias con venta' : 'dias con pedidos';
+
   return (
-    <div className="db-bar-chart">
-      {data.map((d, i) => (
-        <div key={d.date} className="db-bar-col">
-          <div className="db-bar-wrap">
-            <div
-              className="db-bar"
-              style={{ height: `${Math.round((values[i] / max) * 100)}%` }}
-              title={`${formatDate(d.date)}: ${values[i]}`}
-            />
-          </div>
-          {i % Math.max(1, Math.ceil(data.length / 7)) === 0 && (
-            <span className="db-bar-label">{formatDate(d.date)}</span>
-          )}
-        </div>
-      ))}
+    <div className="sales-chart">
+      <div className="sales-chart-scale" aria-hidden="true">
+        <span>{formatValue(actualMax)}</span>
+        <span>{formatValue(Math.round(actualMax / 2))}</span>
+        <span>0</span>
+      </div>
+      <div className="sales-chart-plot">
+        {data.map((d, i) => {
+          const value = values[i];
+          const pct = Math.round((value / scaleMax) * 100);
+          const showLabel = value > 0 && (data.length <= 14 || pct >= 24);
+          return (
+            <div key={d.date} className="sales-chart-col">
+              <span className={showLabel ? 'sales-chart-value' : 'sales-chart-value hidden'}>
+                {showLabel ? formatValue(value) : '\u00A0'}
+              </span>
+              <div className="sales-chart-bar-wrap">
+                <div
+                  className={value > 0 ? 'sales-chart-bar' : 'sales-chart-bar empty'}
+                  style={{ height: `${Math.max(value > 0 ? 4 : 0, pct)}%` }}
+                  title={`${formatDate(d.date)} · ${formatFullValue(value)}`}
+                />
+              </div>
+              {i % labelEvery === 0 || i === data.length - 1 ? (
+                <span className="sales-chart-label">{formatDate(d.date)}</span>
+              ) : (
+                <span className="sales-chart-label ghost">&nbsp;</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="sales-chart-stats">
+        <span>Max {formatFullValue(actualMax)}</span>
+        <span>Prom {formatFullValue(average)}</span>
+        <span>{nonZeroValues.length} {activeDaysLabel}</span>
+      </div>
     </div>
+  );
+}
+
+function BarChart({ data, valueKey, currency }: { data: { date: string; [k: string]: number | string }[]; valueKey: 'revenue' | 'orders'; currency: string }) {
+  return (
+    <SalesBarChart
+      data={data}
+      valueKey={valueKey}
+      currency={currency}
+      kind={valueKey === 'revenue' ? 'money' : 'count'}
+    />
   );
 }
 
@@ -418,7 +483,7 @@ export function SalesClient() {
             <div className="db-two-col">
               <section className="db-section panel">
                 <h2 className="db-section-title">Ingresos por día</h2>
-                <BarChart data={data.byDay} valueKey="revenue" />
+                <BarChart data={data.byDay} valueKey="revenue" currency={currency} />
                 <p className="db-chart-total">
                   {formatMoney(data.kpis.grossRevenue, currency)} en total · {selectedRangeLabel}
                 </p>
@@ -426,7 +491,7 @@ export function SalesClient() {
 
               <section className="db-section panel">
                 <h2 className="db-section-title">Pedidos por día</h2>
-                <BarChart data={data.byDay} valueKey="orders" />
+                <BarChart data={data.byDay} valueKey="orders" currency={currency} />
                 <p className="db-chart-total">
                   {formatNumber(data.kpis.totalOrders)} pedidos en total
                 </p>
