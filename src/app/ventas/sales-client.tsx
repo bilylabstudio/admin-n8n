@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-type Period = 'ytd' | '7d' | '30d' | '90d';
+type PresetPeriod = 'ytd' | '7d' | '30d' | '90d';
+type Period = PresetPeriod | 'custom';
 type Platform = 'all' | 'shopify' | 'amazon';
 
 type SyncStateView = {
@@ -19,6 +20,8 @@ type SalesData = {
   platform: string;
   since: string;
   until: string;
+  startDate: string;
+  endDate: string;
   syncState: SyncStateView[];
   kpis: {
     grossRevenue: number;
@@ -36,7 +39,8 @@ type SalesData = {
 };
 
 const POLL_MS = 60_000;
-const PERIODS: { id: Period; label: string }[] = [
+const STORE_TIME_ZONE = 'Europe/Madrid';
+const PERIODS: { id: PresetPeriod; label: string }[] = [
   { id: 'ytd', label: 'Este año' },
   { id: '7d', label: '7 días' },
   { id: '30d', label: '30 días' },
@@ -85,6 +89,72 @@ function formatPlatformName(value: string) {
 
 function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
+
+function dateInputFromDate(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: STORE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
+function makeDateInput(year: number, month: number, day: number) {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function defaultRangeForPeriod(period: PresetPeriod) {
+  const today = dateInputFromDate(new Date());
+  const year = Number(today.slice(0, 4));
+  if (period === 'ytd') return { start: `${year}-01-01`, end: today };
+
+  const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - days);
+  return { start: dateInputFromDate(start), end: today };
+}
+
+function buildMonthWeekPresets(anchorDate: string) {
+  const [year, month] = anchorDate.split('-').map(Number);
+  const safeYear = Number.isFinite(year) ? year : new Date().getUTCFullYear();
+  const safeMonth = Number.isFinite(month) ? month : new Date().getUTCMonth() + 1;
+  const lastDay = new Date(Date.UTC(safeYear, safeMonth, 0)).getUTCDate();
+
+  return [
+    { label: '1-7', start: 1, end: Math.min(7, lastDay) },
+    { label: '8-14', start: 8, end: Math.min(14, lastDay) },
+    { label: '15-21', start: 15, end: Math.min(21, lastDay) },
+    { label: '22-fin', start: 22, end: lastDay }
+  ]
+    .filter((r) => r.start <= lastDay)
+    .map((r) => ({
+      label: r.label,
+      startDate: makeDateInput(safeYear, safeMonth, r.start),
+      endDate: makeDateInput(safeYear, safeMonth, r.end)
+    }));
+}
+
+function formatInputDate(value: string) {
+  return new Intl.DateTimeFormat('es-ES', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC'
+  }).format(new Date(`${value}T00:00:00.000Z`));
+}
+
+function buildSalesQuery(period: Period, platform: Platform, startDate: string, endDate: string) {
+  const params = new URLSearchParams({ platform });
+  if (period === 'custom') {
+    params.set('start', startDate);
+    params.set('end', endDate);
+  } else {
+    params.set('period', period);
+  }
+  return params;
 }
 
 function BarChart({ data, valueKey }: { data: { date: string; [k: string]: number | string }[]; valueKey: string }) {
@@ -179,20 +249,24 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
 }
 
 export function SalesClient() {
+  const initialRange = defaultRangeForPeriod('ytd');
   const [data, setData] = useState<SalesData | null>(null);
   const [period, setPeriod] = useState<Period>('ytd');
   const [platform, setPlatform] = useState<Platform>('all');
+  const [rangeStart, setRangeStart] = useState(initialRange.start);
+  const [rangeEnd, setRangeEnd] = useState(initialRange.end);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(
-    async (p: Period, pl: Platform, initial = false) => {
+    async (p: Period, pl: Platform, startDate: string, endDate: string, initial = false) => {
       if (initial) setLoading(true);
       setError('');
       try {
-        const res = await fetch(`/api/sales?period=${p}&platform=${pl}`, { cache: 'no-store' });
+        const params = buildSalesQuery(p, pl, startDate, endDate);
+        const res = await fetch(`/api/sales?${params.toString()}`, { cache: 'no-store' });
         const json = (await res.json()) as SalesData & { error?: string };
         if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar la vista.');
         setData(json);
@@ -207,16 +281,33 @@ export function SalesClient() {
   );
 
   useEffect(() => {
-    void load(period, platform, true);
+    void load(period, platform, rangeStart, rangeEnd, true);
     if (timerRef.current) clearInterval(timerRef.current);
-    timerRef.current = setInterval(() => void load(period, platform), POLL_MS);
+    timerRef.current = setInterval(() => void load(period, platform, rangeStart, rangeEnd), POLL_MS);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [load, period, platform]);
+  }, [load, period, platform, rangeStart, rangeEnd]);
 
   const currency = data?.kpis.currency ?? 'EUR';
   const totalByPlatformRevenue = data?.byPlatform.reduce((s, p) => s + p.revenue, 0) ?? 0;
+  const weekPresets = buildMonthWeekPresets(rangeStart);
+  const selectedRangeLabel = data
+    ? `${formatInputDate(data.startDate)} - ${formatInputDate(data.endDate)}`
+    : `${formatInputDate(rangeStart)} - ${formatInputDate(rangeEnd)}`;
+
+  function applyPresetPeriod(nextPeriod: PresetPeriod) {
+    const nextRange = defaultRangeForPeriod(nextPeriod);
+    setPeriod(nextPeriod);
+    setRangeStart(nextRange.start);
+    setRangeEnd(nextRange.end);
+  }
+
+  function applyCustomRange(startDate: string, endDate: string) {
+    setPeriod('custom');
+    setRangeStart(startDate);
+    setRangeEnd(endDate);
+  }
 
   return (
     <main className="shell">
@@ -252,7 +343,7 @@ export function SalesClient() {
                 key={p.id}
                 className={period === p.id ? 'db-period-btn active' : 'db-period-btn'}
                 type="button"
-                onClick={() => setPeriod(p.id)}
+                onClick={() => applyPresetPeriod(p.id)}
               >
                 {p.label}
               </button>
@@ -269,6 +360,59 @@ export function SalesClient() {
         {data && (
           <>
             <SyncStatusBanner states={data.syncState} />
+
+            <section className="db-section panel sales-filter-panel">
+              <div className="sales-filter-grid">
+                <div>
+                  <h2 className="db-section-title" style={{ marginBottom: 6 }}>Periodo financiero</h2>
+                  <p className="sales-range-label">{selectedRangeLabel}</p>
+                </div>
+
+                <div className="sales-date-controls">
+                  <label className="sales-date-field">
+                    <span>Fecha inicio</span>
+                    <input
+                      type="date"
+                      value={rangeStart}
+                      onChange={(e) => {
+                        const nextStart = e.target.value;
+                        if (!nextStart) return;
+                        applyCustomRange(nextStart, rangeEnd >= nextStart ? rangeEnd : nextStart);
+                      }}
+                    />
+                  </label>
+                  <label className="sales-date-field">
+                    <span>Fecha final</span>
+                    <input
+                      type="date"
+                      value={rangeEnd}
+                      onChange={(e) => {
+                        const nextEnd = e.target.value;
+                        if (!nextEnd) return;
+                        applyCustomRange(rangeStart <= nextEnd ? rangeStart : nextEnd, nextEnd);
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="db-period-selector sales-week-presets" aria-label="Semanas del mes">
+                  {weekPresets.map((preset) => (
+                    <button
+                      key={preset.label}
+                      className={
+                        period === 'custom' && rangeStart === preset.startDate && rangeEnd === preset.endDate
+                          ? 'db-period-btn active'
+                          : 'db-period-btn'
+                      }
+                      type="button"
+                      onClick={() => applyCustomRange(preset.startDate, preset.endDate)}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
 
             <section className="db-section">
               <h2 className="db-section-title">Resumen del periodo</h2>
@@ -295,7 +439,7 @@ export function SalesClient() {
                 <h2 className="db-section-title">Ingresos por día</h2>
                 <BarChart data={data.byDay} valueKey="revenue" />
                 <p className="db-chart-total">
-                  {formatMoney(data.kpis.grossRevenue, currency)} en total · periodo {period}
+                  {formatMoney(data.kpis.grossRevenue, currency)} en total · {selectedRangeLabel}
                 </p>
               </section>
 
@@ -329,7 +473,14 @@ export function SalesClient() {
               )}
             </section>
 
-            <RawOrdersSection platform={platform} currency={currency} />
+            <RawOrdersSection
+              platform={platform}
+              period={period}
+              startDate={rangeStart}
+              endDate={rangeEnd}
+              currency={currency}
+              expectedTotal={data.kpis.totalOrders}
+            />
           </>
         )}
       </div>
@@ -357,8 +508,21 @@ type RawOrder = {
   externalUpdatedAt: string;
 };
 
-function RawOrdersSection({ platform, currency }: { platform: Platform; currency: string }) {
-  const [expanded, setExpanded] = useState(false);
+function RawOrdersSection({
+  platform,
+  period,
+  startDate,
+  endDate,
+  currency,
+  expectedTotal
+}: {
+  platform: Platform;
+  period: Period;
+  startDate: string;
+  endDate: string;
+  currency: string;
+  expectedTotal: number;
+}) {
   const [orders, setOrders] = useState<RawOrder[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -367,7 +531,9 @@ function RawOrdersSection({ platform, currency }: { platform: Platform; currency
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`/api/sales/orders?platform=${platform}&limit=2000`, { cache: 'no-store' });
+      const params = buildSalesQuery(period, platform, startDate, endDate);
+      params.set('limit', '2000');
+      const res = await fetch(`/api/sales/orders?${params.toString()}`, { cache: 'no-store' });
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar.');
       setOrders(json.orders);
@@ -376,83 +542,82 @@ function RawOrdersSection({ platform, currency }: { platform: Platform; currency
     } finally {
       setLoading(false);
     }
-  }, [platform]);
-
-  useEffect(() => {
-    if (expanded && orders === null) void load();
-  }, [expanded, orders, load]);
+  }, [endDate, period, platform, startDate]);
 
   useEffect(() => {
     setOrders(null);
-  }, [platform]);
+    void load();
+  }, [load]);
 
   return (
     <section className="db-section panel">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <h2 className="db-section-title" style={{ margin: 0 }}>Detalle de pedidos</h2>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {expanded && orders ? (
-            <button className="ghost-button" type="button" onClick={() => void load()} disabled={loading}>
-              {loading ? 'Recargando...' : 'Recargar'}
-            </button>
-          ) : null}
-          <button className="ghost-button" type="button" onClick={() => setExpanded((v) => !v)}>
-            {expanded ? 'Ocultar' : `Ver pedidos en bruto${orders ? ` (${orders.length})` : ''}`}
-          </button>
+      <div className="sales-orders-head">
+        <div>
+          <h2 className="db-section-title" style={{ margin: 0 }}>Pedidos del periodo</h2>
+          <p className="sales-orders-meta">
+            {orders ? `${formatNumber(orders.length)} de ${formatNumber(expectedTotal)} pedidos` : `${formatNumber(expectedTotal)} pedidos`}
+            {expectedTotal > 2000 ? ' · tope visible 2.000' : ''}
+          </p>
         </div>
+        <button className="ghost-button" type="button" onClick={() => void load()} disabled={loading}>
+          {loading ? 'Recargando...' : 'Recargar'}
+        </button>
       </div>
 
-      {expanded ? (
-        <div style={{ marginTop: 12 }}>
-          {error ? <p style={{ color: 'var(--error-red)' }}>{error}</p> : null}
-          {loading && !orders ? <div className="empty-state" style={{ minHeight: 80 }}>Cargando pedidos...</div> : null}
-          {orders && orders.length === 0 ? <div className="empty-state">No hay pedidos guardados aún.</div> : null}
-          {orders && orders.length > 0 ? (
-            <>
-              <p style={{ fontSize: 12, color: 'var(--ink-soft)', margin: '0 0 8px' }}>
-                Mostrando los últimos {orders.length} pedidos ordenados por fecha. Tope: 2.000.
-              </p>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                  <thead>
-                    <tr style={{ textAlign: 'left', borderBottom: '1px solid var(--neutral-border, #e5e7eb)' }}>
-                      <th style={{ padding: '8px 10px' }}>Fecha</th>
-                      <th style={{ padding: '8px 10px' }}>Plataforma</th>
-                      <th style={{ padding: '8px 10px' }}>Pedido</th>
-                      <th style={{ padding: '8px 10px' }}>Cliente</th>
-                      <th style={{ padding: '8px 10px' }}>País</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Total</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Reemb.</th>
-                      <th style={{ padding: '8px 10px', textAlign: 'right' }}>Uds.</th>
-                      <th style={{ padding: '8px 10px' }}>Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((o) => (
-                      <tr key={o.id} style={{ borderBottom: '1px solid var(--neutral-border, #f3f4f6)' }}>
-                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>{formatFullDate(o.processedAt)}</td>
-                        <td style={{ padding: '6px 10px' }}>{o.platform}</td>
-                        <td style={{ padding: '6px 10px' }}>{o.orderNumber || o.externalOrderId}</td>
-                        <td style={{ padding: '6px 10px' }}>{o.customerEmail || '—'}</td>
-                        <td style={{ padding: '6px 10px' }}>{o.countryCode || '—'}</td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{formatMoney(o.totalPrice, o.currency || currency)}</td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right', color: o.totalRefunded > 0 ? 'var(--error-red)' : 'var(--ink-soft)' }}>
-                          {o.totalRefunded > 0 ? formatMoney(o.totalRefunded, o.currency || currency) : '—'}
+      <div style={{ marginTop: 12 }}>
+        {error ? <p style={{ color: 'var(--error-red)' }}>{error}</p> : null}
+        {loading && !orders ? <div className="empty-state" style={{ minHeight: 80 }}>Cargando pedidos...</div> : null}
+        {orders && orders.length === 0 ? <div className="empty-state">Sin pedidos en el periodo.</div> : null}
+        {orders && orders.length > 0 ? (
+          <>
+            <div className="sales-table-wrap">
+              <table className="sales-orders-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Plataforma</th>
+                    <th>Pedido</th>
+                    <th>Cliente</th>
+                    <th>Pais</th>
+                    <th>Canal</th>
+                    <th className="num">Total</th>
+                    <th className="num">Reemb.</th>
+                    <th className="num">Neto</th>
+                    <th className="num">Uds.</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders.map((o) => {
+                    const rowCurrency = o.currency || currency;
+                    const net = o.totalPrice - o.totalRefunded;
+                    return (
+                      <tr key={o.id}>
+                        <td className="nowrap">{formatFullDate(o.processedAt)}</td>
+                        <td>{formatPlatformName(o.platform)}</td>
+                        <td className="nowrap">{o.orderNumber || o.externalOrderId}</td>
+                        <td>{o.customerEmail || '-'}</td>
+                        <td>{o.countryCode || '-'}</td>
+                        <td>{o.channel || '-'}</td>
+                        <td className="num">{formatMoney(o.totalPrice, rowCurrency)}</td>
+                        <td className={o.totalRefunded > 0 ? 'num refund' : 'num muted'}>
+                          {o.totalRefunded > 0 ? formatMoney(o.totalRefunded, rowCurrency) : '-'}
                         </td>
-                        <td style={{ padding: '6px 10px', textAlign: 'right' }}>{o.totalUnits}</td>
-                        <td style={{ padding: '6px 10px' }}>{o.financialStatus}</td>
+                        <td className="num">{formatMoney(net, rowCurrency)}</td>
+                        <td className="num">{o.totalUnits}</td>
+                        <td>{o.financialStatus}</td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p style={{ fontSize: 12, color: 'var(--ink-soft)', marginTop: 8 }}>
-                Más antiguo: {formatFullDate(orders[orders.length - 1].processedAt)} · Más reciente: {formatFullDate(orders[0].processedAt)}
-              </p>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="sales-orders-meta">
+              Mas antiguo: {formatFullDate(orders[orders.length - 1].processedAt)} · Mas reciente: {formatFullDate(orders[0].processedAt)}
+            </p>
+          </>
+        ) : null}
+      </div>
     </section>
   );
 }

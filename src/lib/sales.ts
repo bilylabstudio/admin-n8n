@@ -1,6 +1,7 @@
 import type { PlatformOrder, PlatformSyncState } from '@prisma/client';
 
 export type Period = 'ytd' | '7d' | '30d' | '90d';
+export type SalesPeriod = Period | 'custom';
 
 export type SalesKpis = {
   grossRevenue: number;
@@ -24,10 +25,12 @@ export type SyncStateView = {
 
 export type SalesResponse = {
   ok: true;
-  period: Period;
+  period: SalesPeriod;
   platform: string;
   since: string;
   until: string;
+  startDate: string;
+  endDate: string;
   syncState: SyncStateView[];
   kpis: SalesKpis;
   byDay: Array<{ date: string; orders: number; revenue: number; units: number }>;
@@ -51,6 +54,63 @@ export function sinceForPeriod(period: Period, now: Date = new Date()): Date {
   const d = new Date(now);
   d.setUTCDate(d.getUTCDate() - days);
   return d;
+}
+
+export type SalesDateRange =
+  | {
+      ok: true;
+      period: SalesPeriod;
+      since: Date;
+      until: Date;
+      startDate: string;
+      endDate: string;
+    }
+  | { ok: false; error: string };
+
+export function resolveSalesDateRange(input: {
+  periodParam?: string | null;
+  startParam?: string | null;
+  endParam?: string | null;
+  now?: Date;
+}): SalesDateRange {
+  const now = input.now ?? new Date();
+  const startParam = input.startParam?.trim() || null;
+  const endParam = input.endParam?.trim() || null;
+
+  if (startParam || endParam) {
+    if (!startParam || !endParam) {
+      return { ok: false, error: 'Debes enviar fecha inicio y fecha final.' };
+    }
+
+    const since = parseDateInput(startParam, 'start');
+    const until = parseDateInput(endParam, 'end');
+    if (!since || !until) {
+      return { ok: false, error: 'Formato de fecha invalido. Usa YYYY-MM-DD.' };
+    }
+    if (since.getTime() > until.getTime()) {
+      return { ok: false, error: 'La fecha inicio no puede ser posterior a la fecha final.' };
+    }
+
+    return {
+      ok: true,
+      period: 'custom',
+      since,
+      until,
+      startDate: startParam,
+      endDate: endParam
+    };
+  }
+
+  const period: Period = isPeriod(input.periodParam) ? input.periodParam : 'ytd';
+  const since = sinceForPeriod(period, now);
+  return {
+    ok: true,
+    period,
+    since,
+    until: now,
+    startDate: dateInputFromDate(since),
+    endDate: dateInputFromDate(now)
+  };
 }
 
 export function aggregate(orders: AggregateInput[]): {
@@ -150,4 +210,31 @@ function mostCommon<T>(arr: T[]): T | null {
   const counts = new Map<T, number>();
   for (const v of arr) counts.set(v, (counts.get(v) || 0) + 1);
   return [...counts.entries()].sort(([, a], [, b]) => b - a)[0][0];
+}
+
+function parseDateInput(value: string, boundary: 'start' | 'end'): Date | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  if (boundary === 'end') {
+    date.setUTCHours(23, 59, 59, 999);
+  }
+  return date;
+}
+
+function dateInputFromDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
 }

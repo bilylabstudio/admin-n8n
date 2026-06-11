@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { aggregate, sinceForPeriod, isPeriod, type AggregateInput } from './sales';
+import { aggregate, sinceForPeriod, isPeriod, resolveSalesDateRange, type AggregateInput } from './sales';
 
 function order(partial: Partial<AggregateInput> & { processedAt: Date }): AggregateInput {
   return {
@@ -36,6 +36,26 @@ describe('isPeriod', () => {
     expect(isPeriod('foo')).toBe(false);
     expect(isPeriod(null)).toBe(false);
     expect(isPeriod(undefined)).toBe(false);
+  });
+});
+
+describe('resolveSalesDateRange', () => {
+  it('uses an inclusive full-day range for custom calendar dates', () => {
+    const range = resolveSalesDateRange({ startParam: '2026-06-01', endParam: '2026-06-07' });
+
+    expect(range.ok).toBe(true);
+    if (!range.ok) return;
+    expect(range.period).toBe('custom');
+    expect(range.since.toISOString()).toBe('2026-06-01T00:00:00.000Z');
+    expect(range.until.toISOString()).toBe('2026-06-07T23:59:59.999Z');
+    expect(range.startDate).toBe('2026-06-01');
+    expect(range.endDate).toBe('2026-06-07');
+  });
+
+  it('rejects invalid or inverted custom calendar dates', () => {
+    expect(resolveSalesDateRange({ startParam: '2026-02-31', endParam: '2026-03-05' }).ok).toBe(false);
+    expect(resolveSalesDateRange({ startParam: '2026-06-08', endParam: '2026-06-07' }).ok).toBe(false);
+    expect(resolveSalesDateRange({ startParam: '2026-06-01' }).ok).toBe(false);
   });
 });
 
