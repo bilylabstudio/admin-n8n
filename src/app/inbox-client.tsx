@@ -72,16 +72,7 @@ type SentExportPayload = {
   scope: 'all_sent';
   count: number;
   messages: Array<{
-    id: string;
-    customerName: string | null;
-    customerEmail: string;
-    subject: string;
-    receivedAt: string;
-    sentAt: string | null;
-    status: TicketStatus;
-    wasEditedAndSent: boolean;
     originalMessage: string;
-    aiMessage: string;
     sentMessage: string;
   }>;
 };

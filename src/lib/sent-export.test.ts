@@ -7,17 +7,9 @@ import {
 } from './sent-export';
 
 const baseTicket: SentExportTicket = {
-  id: 'ticket-1',
-  customerName: 'Maria Cliente',
-  customerEmail: 'maria@example.com',
-  subject: 'Consulta pedido',
-  receivedAt: new Date('2026-06-01T09:15:00.000Z'),
-  sentAt: new Date('2026-06-01T09:45:00.000Z'),
-  status: 'approved_sent',
   originalText: 'Hola, donde esta mi pedido?',
   aiReply: 'Hola Maria, revisamos tu pedido.',
-  finalReply: null,
-  updatedAt: new Date('2026-06-01T09:45:30.000Z')
+  finalReply: null
 };
 
 describe('sent export helpers', () => {
@@ -25,33 +17,21 @@ describe('sent export helpers', () => {
     expect(SENT_EXPORT_STATUSES).toEqual(['approved_sent', 'edited_sent']);
   });
 
-  it('serializes a sent ticket with the original customer message', () => {
+  it('serializes only the original customer message and sent reply', () => {
     expect(toSentExportMessage(baseTicket)).toEqual({
-      id: 'ticket-1',
-      customerName: 'Maria Cliente',
-      customerEmail: 'maria@example.com',
-      subject: 'Consulta pedido',
-      receivedAt: '2026-06-01T09:15:00.000Z',
-      sentAt: '2026-06-01T09:45:00.000Z',
-      status: 'approved_sent',
-      wasEditedAndSent: false,
       originalMessage: 'Hola, donde esta mi pedido?',
-      aiMessage: 'Hola Maria, revisamos tu pedido.',
       sentMessage: 'Hola Maria, revisamos tu pedido.'
     });
   });
 
-  it('uses finalReply for edited sent tickets', () => {
+  it('uses finalReply for the sent message when it exists', () => {
     expect(
       toSentExportMessage({
         ...baseTicket,
-        id: 'ticket-2',
-        status: 'edited_sent',
         finalReply: 'Hola Maria, tu pedido sale hoy.'
       })
-    ).toMatchObject({
-      id: 'ticket-2',
-      wasEditedAndSent: true,
+    ).toEqual({
+      originalMessage: 'Hola, donde esta mi pedido?',
       sentMessage: 'Hola Maria, tu pedido sale hoy.'
     });
   });
@@ -62,10 +42,7 @@ describe('sent export helpers', () => {
         baseTicket,
         {
           ...baseTicket,
-          id: 'ticket-3',
-          customerName: null,
-          customerEmail: 'ana@example.com',
-          status: 'edited_sent',
+          originalText: 'Antes del desayuno?',
           finalReply: 'Respuesta final editada'
         }
       ],
@@ -77,12 +54,14 @@ describe('sent export helpers', () => {
       scope: 'all_sent',
       count: 2,
       messages: [
-        expect.objectContaining({ id: 'ticket-1', originalMessage: 'Hola, donde esta mi pedido?' }),
-        expect.objectContaining({
-          id: 'ticket-3',
-          customerName: null,
+        {
+          originalMessage: 'Hola, donde esta mi pedido?',
+          sentMessage: 'Hola Maria, revisamos tu pedido.'
+        },
+        {
+          originalMessage: 'Antes del desayuno?',
           sentMessage: 'Respuesta final editada'
-        })
+        }
       ]
     });
   });

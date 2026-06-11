@@ -16,17 +16,9 @@ export async function GET() {
       where: { status: { in: [...SENT_EXPORT_STATUSES] } },
       orderBy: [{ sentAt: 'desc' }, { updatedAt: 'desc' }],
       select: {
-        id: true,
-        customerName: true,
-        customerEmail: true,
-        subject: true,
-        receivedAt: true,
-        sentAt: true,
-        status: true,
         originalText: true,
         aiReply: true,
-        finalReply: true,
-        updatedAt: true
+        finalReply: true
       }
     });
 

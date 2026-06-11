@@ -40,17 +40,9 @@ describe('GET /api/tickets/export/sent', () => {
     mocks.currentUser.mockResolvedValue({ id: 'user-1', email: 'admin@example.com' });
     mocks.ticketFindMany.mockResolvedValue([
       {
-        id: 'ticket-1',
-        customerName: 'Maria Cliente',
-        customerEmail: 'maria@example.com',
-        subject: 'Consulta pedido',
-        receivedAt: new Date('2026-06-01T09:15:00.000Z'),
-        sentAt: new Date('2026-06-01T09:45:00.000Z'),
-        status: 'edited_sent',
         originalText: 'Mensaje original del cliente',
         aiReply: 'Respuesta IA',
-        finalReply: 'Respuesta enviada editada',
-        updatedAt: new Date('2026-06-01T09:45:30.000Z')
+        finalReply: 'Respuesta enviada editada'
       }
     ]);
 
@@ -62,17 +54,9 @@ describe('GET /api/tickets/export/sent', () => {
       where: { status: { in: ['approved_sent', 'edited_sent'] } },
       orderBy: [{ sentAt: 'desc' }, { updatedAt: 'desc' }],
       select: {
-        id: true,
-        customerName: true,
-        customerEmail: true,
-        subject: true,
-        receivedAt: true,
-        sentAt: true,
-        status: true,
         originalText: true,
         aiReply: true,
-        finalReply: true,
-        updatedAt: true
+        finalReply: true
       }
     });
     expect(body.scope).toBe('all_sent');
@@ -80,16 +64,7 @@ describe('GET /api/tickets/export/sent', () => {
     expect(body.exportedAt).toEqual(expect.any(String));
     expect(body.messages).toEqual([
       {
-        id: 'ticket-1',
-        customerName: 'Maria Cliente',
-        customerEmail: 'maria@example.com',
-        subject: 'Consulta pedido',
-        receivedAt: '2026-06-01T09:15:00.000Z',
-        sentAt: '2026-06-01T09:45:00.000Z',
-        status: 'edited_sent',
-        wasEditedAndSent: true,
         originalMessage: 'Mensaje original del cliente',
-        aiMessage: 'Respuesta IA',
         sentMessage: 'Respuesta enviada editada'
       }
     ]);
