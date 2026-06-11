@@ -1,8 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  buildMonthWeekPresets,
+  dateInputFromDate,
+  defaultRangeForPeriod,
+  monthFromDateInput,
+  monthInputFromDate,
+  type PresetPeriod
+} from '@/lib/sales-periods';
 
-type PresetPeriod = 'ytd' | '7d' | '30d' | '90d';
 type Period = PresetPeriod | 'custom';
 type Platform = 'all' | 'shopify' | 'amazon';
 
@@ -39,7 +46,6 @@ type SalesData = {
 };
 
 const POLL_MS = 60_000;
-const STORE_TIME_ZONE = 'Europe/Madrid';
 const PERIODS: { id: PresetPeriod; label: string }[] = [
   { id: 'ytd', label: 'Este año' },
   { id: '7d', label: '7 días' },
@@ -89,52 +95,6 @@ function formatPlatformName(value: string) {
 
 function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
-}
-
-function dateInputFromDate(date: Date) {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: STORE_TIME_ZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).formatToParts(date);
-  const part = (type: string) => parts.find((p) => p.type === type)?.value || '';
-  return `${part('year')}-${part('month')}-${part('day')}`;
-}
-
-function makeDateInput(year: number, month: number, day: number) {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-}
-
-function defaultRangeForPeriod(period: PresetPeriod) {
-  const today = dateInputFromDate(new Date());
-  const year = Number(today.slice(0, 4));
-  if (period === 'ytd') return { start: `${year}-01-01`, end: today };
-
-  const days = period === '7d' ? 7 : period === '30d' ? 30 : 90;
-  const start = new Date();
-  start.setUTCDate(start.getUTCDate() - days);
-  return { start: dateInputFromDate(start), end: today };
-}
-
-function buildMonthWeekPresets(anchorDate: string) {
-  const [year, month] = anchorDate.split('-').map(Number);
-  const safeYear = Number.isFinite(year) ? year : new Date().getUTCFullYear();
-  const safeMonth = Number.isFinite(month) ? month : new Date().getUTCMonth() + 1;
-  const lastDay = new Date(Date.UTC(safeYear, safeMonth, 0)).getUTCDate();
-
-  return [
-    { label: '1-7', start: 1, end: Math.min(7, lastDay) },
-    { label: '8-14', start: 8, end: Math.min(14, lastDay) },
-    { label: '15-21', start: 15, end: Math.min(21, lastDay) },
-    { label: '22-fin', start: 22, end: lastDay }
-  ]
-    .filter((r) => r.start <= lastDay)
-    .map((r) => ({
-      label: r.label,
-      startDate: makeDateInput(safeYear, safeMonth, r.start),
-      endDate: makeDateInput(safeYear, safeMonth, r.end)
-    }));
 }
 
 function formatInputDate(value: string) {
@@ -249,12 +209,14 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
 }
 
 export function SalesClient() {
+  const initialMonth = monthInputFromDate(new Date());
   const initialRange = defaultRangeForPeriod('ytd');
   const [data, setData] = useState<SalesData | null>(null);
   const [period, setPeriod] = useState<Period>('ytd');
   const [platform, setPlatform] = useState<Platform>('all');
   const [rangeStart, setRangeStart] = useState(initialRange.start);
   const [rangeEnd, setRangeEnd] = useState(initialRange.end);
+  const [weekPresetMonth, setWeekPresetMonth] = useState(initialMonth);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -291,7 +253,7 @@ export function SalesClient() {
 
   const currency = data?.kpis.currency ?? 'EUR';
   const totalByPlatformRevenue = data?.byPlatform.reduce((s, p) => s + p.revenue, 0) ?? 0;
-  const weekPresets = buildMonthWeekPresets(rangeStart);
+  const weekPresets = buildMonthWeekPresets(weekPresetMonth);
   const selectedRangeLabel = data
     ? `${formatInputDate(data.startDate)} - ${formatInputDate(data.endDate)}`
     : `${formatInputDate(rangeStart)} - ${formatInputDate(rangeEnd)}`;
@@ -301,12 +263,21 @@ export function SalesClient() {
     setPeriod(nextPeriod);
     setRangeStart(nextRange.start);
     setRangeEnd(nextRange.end);
+    setWeekPresetMonth(monthInputFromDate(new Date()));
   }
 
   function applyCustomRange(startDate: string, endDate: string) {
     setPeriod('custom');
     setRangeStart(startDate);
     setRangeEnd(endDate);
+    setWeekPresetMonth(monthFromDateInput(startDate));
+  }
+
+  function applyWeekPreset(startDate: string, endDate: string) {
+    setPeriod('custom');
+    setRangeStart(startDate);
+    setRangeEnd(endDate);
+    setWeekPresetMonth(monthFromDateInput(startDate));
   }
 
   return (
@@ -393,6 +364,16 @@ export function SalesClient() {
                       }}
                     />
                   </label>
+                  <label className="sales-date-field sales-month-field">
+                    <span>Mes semanas</span>
+                    <input
+                      type="month"
+                      value={weekPresetMonth}
+                      onChange={(e) => {
+                        if (e.target.value) setWeekPresetMonth(e.target.value);
+                      }}
+                    />
+                  </label>
                 </div>
 
                 <div className="db-period-selector sales-week-presets" aria-label="Semanas del mes">
@@ -405,7 +386,7 @@ export function SalesClient() {
                           : 'db-period-btn'
                       }
                       type="button"
-                      onClick={() => applyCustomRange(preset.startDate, preset.endDate)}
+                      onClick={() => applyWeekPreset(preset.startDate, preset.endDate)}
                     >
                       {preset.label}
                     </button>

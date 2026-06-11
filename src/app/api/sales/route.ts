@@ -42,7 +42,10 @@ export async function GET(request: Request) {
     db.platformSyncState.findMany()
   ]);
 
-  const { kpis, byDay, byPlatform } = aggregate(orders);
+  const { kpis, byDay, byPlatform } =
+    range.period === 'ytd'
+      ? aggregate(orders)
+      : aggregate(orders, { since: range.since, until: range.until });
 
   return Response.json({
     ok: true,

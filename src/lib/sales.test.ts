@@ -102,6 +102,28 @@ describe('aggregate', () => {
     ]);
   });
 
+  it('fills empty days when a visible range is provided', () => {
+    const orders: AggregateInput[] = [
+      order({ processedAt: new Date('2026-06-01T10:00:00Z'), totalPrice: 100 as never, totalUnits: 2 }),
+      order({ processedAt: new Date('2026-06-04T10:00:00Z'), totalPrice: 50 as never, totalUnits: 1 })
+    ];
+
+    const { byDay } = aggregate(orders, {
+      since: new Date('2026-06-01T00:00:00.000Z'),
+      until: new Date('2026-06-07T23:59:59.999Z')
+    });
+
+    expect(byDay).toEqual([
+      { date: '2026-06-01', orders: 1, revenue: 100, units: 2 },
+      { date: '2026-06-02', orders: 0, revenue: 0, units: 0 },
+      { date: '2026-06-03', orders: 0, revenue: 0, units: 0 },
+      { date: '2026-06-04', orders: 1, revenue: 50, units: 1 },
+      { date: '2026-06-05', orders: 0, revenue: 0, units: 0 },
+      { date: '2026-06-06', orders: 0, revenue: 0, units: 0 },
+      { date: '2026-06-07', orders: 0, revenue: 0, units: 0 }
+    ]);
+  });
+
   it('groups by platform sorted by revenue desc', () => {
     const orders: AggregateInput[] = [
       order({ platform: 'shopify', processedAt: new Date('2026-05-10T10:00:00Z'), totalPrice: 100 as never }),

@@ -42,6 +42,11 @@ export type AggregateInput = Pick<
   'platform' | 'processedAt' | 'financialStatus' | 'totalPrice' | 'totalRefunded' | 'totalUnits' | 'currency'
 >;
 
+export type AggregateOptions = {
+  since?: Date;
+  until?: Date;
+};
+
 export function isPeriod(value: string | null | undefined): value is Period {
   return value === 'ytd' || value === '7d' || value === '30d' || value === '90d';
 }
@@ -113,7 +118,7 @@ export function resolveSalesDateRange(input: {
   };
 }
 
-export function aggregate(orders: AggregateInput[]): {
+export function aggregate(orders: AggregateInput[], options: AggregateOptions = {}): {
   kpis: SalesKpis;
   byDay: SalesResponse['byDay'];
   byPlatform: SalesResponse['byPlatform'];
@@ -147,9 +152,12 @@ export function aggregate(orders: AggregateInput[]): {
     cur.units += o.totalUnits;
     byDayMap.set(date, cur);
   }
-  const byDay = [...byDayMap.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, v]) => ({ date, orders: v.orders, revenue: round2(v.revenue), units: v.units }));
+  const byDay =
+    options.since && options.until
+      ? fillDateRange(options.since, options.until, byDayMap)
+      : [...byDayMap.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([date, v]) => ({ date, orders: v.orders, revenue: round2(v.revenue), units: v.units }));
 
   const byPlatformMap = new Map<string, { orders: number; revenue: number }>();
   for (const o of orders) {
@@ -210,6 +218,25 @@ function mostCommon<T>(arr: T[]): T | null {
   const counts = new Map<T, number>();
   for (const v of arr) counts.set(v, (counts.get(v) || 0) + 1);
   return [...counts.entries()].sort(([, a], [, b]) => b - a)[0][0];
+}
+
+function fillDateRange(
+  since: Date,
+  until: Date,
+  byDayMap: Map<string, { orders: number; revenue: number; units: number }>
+): SalesResponse['byDay'] {
+  const result: SalesResponse['byDay'] = [];
+  const cursor = new Date(Date.UTC(since.getUTCFullYear(), since.getUTCMonth(), since.getUTCDate()));
+  const end = new Date(Date.UTC(until.getUTCFullYear(), until.getUTCMonth(), until.getUTCDate()));
+
+  while (cursor.getTime() <= end.getTime()) {
+    const date = cursor.toISOString().slice(0, 10);
+    const value = byDayMap.get(date) || { orders: 0, revenue: 0, units: 0 };
+    result.push({ date, orders: value.orders, revenue: round2(value.revenue), units: value.units });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return result;
 }
 
 function parseDateInput(value: string, boundary: 'start' | 'end'): Date | null {
