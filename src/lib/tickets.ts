@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { db } from './db';
 import { canUpdateFromIngest, nextStatusAfterIngest } from './status';
 
+const sentimentSchema = z.enum(['molesto', 'neutral', 'contento']);
+
 export const ingestTicketSchema = z.object({
   external_message_id: z.string().min(1),
   customer_email: z.string().email(),
@@ -16,6 +18,10 @@ export const ingestTicketSchema = z.object({
   escalation_recommended: z.boolean().optional().default(false),
   ai_confidence: z.number().min(0).max(1).optional(),
   confidence_label: z.string().optional().default(''),
+  routed_template_id: z.string().optional().default(''),
+  route_source: z.string().optional().default(''),
+  sentiment: sentimentSchema.nullable().optional(),
+  sentiment_source: z.string().optional().default(''),
   requires_review: z.boolean().optional().default(false),
   case_reasoning: z.unknown().optional(),
   critic: z.unknown().optional(),
@@ -28,6 +34,27 @@ export const ingestTicketSchema = z.object({
 });
 
 export type IngestTicketInput = z.infer<typeof ingestTicketSchema>;
+
+function metricCreateData(input: IngestTicketInput) {
+  const sentiment = input.sentiment ?? null;
+
+  return {
+    routedTemplateId: input.routed_template_id || null,
+    routeSource: input.route_source || null,
+    sentiment,
+    sentimentSource: sentiment ? input.sentiment_source || null : null
+  };
+}
+
+function metricUpdateData(input: IngestTicketInput) {
+  const sentiment = input.sentiment ?? null;
+
+  return {
+    ...(input.routed_template_id ? { routedTemplateId: input.routed_template_id } : {}),
+    ...(input.route_source ? { routeSource: input.route_source } : {}),
+    ...(sentiment ? { sentiment, sentimentSource: input.sentiment_source || null } : {})
+  };
+}
 
 export async function ingestTicket(input: IngestTicketInput) {
   const existing = await db.ticket.findUnique({
@@ -56,6 +83,7 @@ export async function ingestTicket(input: IngestTicketInput) {
       escalationRecommended: input.escalation_recommended,
       aiConfidence: input.ai_confidence ?? null,
       confidenceLabel: input.confidence_label || null,
+      ...metricUpdateData(input),
       requiresReview: input.requires_review,
       caseReasoningJson: input.case_reasoning as never,
       criticJson: input.critic as never,
@@ -83,6 +111,7 @@ export async function ingestTicket(input: IngestTicketInput) {
       escalationRecommended: input.escalation_recommended,
       aiConfidence: input.ai_confidence ?? null,
       confidenceLabel: input.confidence_label || null,
+      ...metricCreateData(input),
       requiresReview: input.requires_review,
       caseReasoningJson: input.case_reasoning as never,
       criticJson: input.critic as never,

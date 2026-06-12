@@ -98,6 +98,10 @@ model Ticket {
   escalationRecommended Boolean      @default(false)
   aiConfidence          Float?
   confidenceLabel       String?
+  routedTemplateId      String?
+  routeSource           String?
+  sentiment             String?
+  sentimentSource       String?
   requiresReview        Boolean      @default(false)
   caseReasoningJson     Json?
   criticJson            Json?
@@ -119,13 +123,17 @@ model Ticket {
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
 
-  approvedBy  User?            @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
-  auditEvents AuditEvent[]
-  forms       FormSubmission[]
+  approvedBy     User?            @relation("TicketApprovedBy", fields: [approvedByUserId], references: [id])
+  auditEvents    AuditEvent[]
+  forms          FormSubmission[]
   threadMessages ThreadMessage[]
 
   @@index([status, receivedAt])
+  @@index([receivedAt])
   @@index([customerEmail])
+  @@index([routedTemplateId, receivedAt])
+  @@index([routeSource, receivedAt])
+  @@index([sentiment, receivedAt])
   @@index([imapMailbox, imapUid])
   @@index([seenSyncedAt])
   @@index([answeredSyncedAt])

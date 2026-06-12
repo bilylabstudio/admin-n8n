@@ -3,6 +3,47 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 type Period = '7d' | '30d' | '90d';
+type Sentiment = 'molesto' | 'neutral' | 'contento';
+
+type ReasonByFamily = {
+  family: string;
+  label: string;
+  count: number;
+  percent: number;
+  topReasons: {
+    id: string | null;
+    label: string;
+    count: number;
+    percentOfTotal: number;
+    percentOfFamily: number;
+  }[];
+};
+
+type RouteSourceBreakdown = {
+  source: string | null;
+  label: string;
+  count: number;
+  percent: number;
+};
+
+type SentimentBreakdown = {
+  sentiment: Sentiment;
+  label: string;
+  count: number;
+  percent: number;
+};
+
+type SentimentByFamily = {
+  family: string;
+  label: string;
+  count: number;
+  molesto: number;
+  neutral: number;
+  contento: number;
+  molestoPercent: number;
+  neutralPercent: number;
+  contentoPercent: number;
+};
 
 type DashboardData = {
   ok: boolean;
@@ -13,6 +54,12 @@ type DashboardData = {
   statusBreakdown: { status: string; count: number }[];
   topCategories: { category: string; count: number }[];
   topIntents: { intent: string; count: number }[];
+  reasonsByFamily: ReasonByFamily[];
+  routeSourceBreakdown: RouteSourceBreakdown[];
+  closedLabelRate: number;
+  sentimentBreakdown: SentimentBreakdown[];
+  sentimentCoverage: number;
+  sentimentByFamily: SentimentByFamily[];
   totalInPeriod: number;
   aiAccuracy: number;
   abandonRate: number;
@@ -41,6 +88,12 @@ const STATUS_COLORS: Record<string, string> = {
   new: 'var(--neutral-bg)',
   ai_generated: 'var(--gummy-violet)',
   manual: 'var(--manual-violet)',
+};
+
+const SENTIMENT_COLORS: Record<Sentiment, string> = {
+  molesto: 'var(--error-red)',
+  neutral: 'var(--ink-muted)',
+  contento: 'var(--gummy-teal)',
 };
 
 const POLL_MS = 30_000;
@@ -95,6 +148,32 @@ function PercentBar({ value, color, label }: { value: number; color?: string; la
   );
 }
 
+function StackedBar({
+  segments
+}: {
+  segments: { key: Sentiment; label: string; count: number }[];
+}) {
+  const total = segments.reduce((sum, segment) => sum + segment.count, 0);
+
+  return (
+    <div className="db-stacked-bar">
+      {segments
+        .filter((segment) => segment.count > 0)
+        .map((segment) => (
+          <span
+            key={segment.key}
+            className="db-stacked-segment"
+            style={{
+              width: `${Math.max(3, Math.round((segment.count / Math.max(total, 1)) * 100))}%`,
+              background: SENTIMENT_COLORS[segment.key]
+            }}
+            title={`${segment.label}: ${segment.count}`}
+          />
+        ))}
+    </div>
+  );
+}
+
 function KpiCard({ label, value, sub, tone }: { label: string; value: string | number; sub?: string; tone?: 'warning' | 'error' | 'ok' }) {
   return (
     <div className={`db-kpi-card ${tone ? `db-kpi-${tone}` : ''}`}>
@@ -141,6 +220,24 @@ export function DashboardClient() {
   const maxCat = data?.topCategories[0]?.count ?? 1;
   const maxInt = data?.topIntents[0]?.count ?? 1;
   const totalStatus = data?.statusBreakdown.reduce((s, r) => s + r.count, 0) ?? 1;
+  const sentimentMolesto = data?.sentimentBreakdown.find((s) => s.sentiment === 'molesto') ?? {
+    sentiment: 'molesto' as const,
+    label: 'Molestos',
+    count: 0,
+    percent: 0
+  };
+  const sentimentNeutral = data?.sentimentBreakdown.find((s) => s.sentiment === 'neutral') ?? {
+    sentiment: 'neutral' as const,
+    label: 'Neutrales',
+    count: 0,
+    percent: 0
+  };
+  const sentimentContento = data?.sentimentBreakdown.find((s) => s.sentiment === 'contento') ?? {
+    sentiment: 'contento' as const,
+    label: 'Contentos',
+    count: 0,
+    percent: 0
+  };
 
   return (
     <main className="shell">
@@ -248,6 +345,133 @@ export function DashboardClient() {
                   sub="con riskFlags activos"
                   tone={data.sensitiveRate > 30 ? 'warning' : undefined}
                 />
+              </div>
+            </section>
+
+            <section className="db-section">
+              <h2 className="db-section-title">Motivos y etiquetado</h2>
+              <div className="db-kpi-grid">
+                <KpiCard
+                  label="Etiqueta cerrada"
+                  value={`${data.closedLabelRate}%`}
+                  sub={`${data.totalInPeriod} tickets del periodo`}
+                  tone={data.closedLabelRate >= 80 ? 'ok' : data.closedLabelRate >= 50 ? 'warning' : 'error'}
+                />
+                <KpiCard
+                  label="Sentimiento analizado"
+                  value={`${data.sentimentCoverage}%`}
+                  sub="tickets con sentimiento"
+                  tone={data.sentimentCoverage >= 80 ? 'ok' : data.sentimentCoverage >= 50 ? 'warning' : 'error'}
+                />
+                <KpiCard
+                  label="Familias activas"
+                  value={data.reasonsByFamily.filter((reason) => reason.family !== 'sin_etiqueta').length}
+                  sub="con etiqueta cerrada"
+                />
+                <KpiCard
+                  label="Fuentes de ruta"
+                  value={data.routeSourceBreakdown.length}
+                  sub="orígenes detectados"
+                />
+              </div>
+            </section>
+
+            <div className="db-two-col">
+              <section className="db-section panel">
+                <h2 className="db-section-title">Motivos de contacto</h2>
+                <div className="db-reason-list">
+                  {data.reasonsByFamily.map((group) => (
+                    <div key={group.family} className="db-reason-group">
+                      <div className="db-reason-head">
+                        <strong>{group.label}</strong>
+                        <span>{group.count} · {group.percent}%</span>
+                      </div>
+                      <div className="db-reason-track">
+                        <div className="db-reason-fill" style={{ width: `${group.percent}%` }} />
+                      </div>
+                      <div className="db-mini-list">
+                        {group.topReasons.map((reason) => (
+                          <div key={reason.id ?? 'sin-etiqueta'} className="db-mini-row">
+                            <span>{reason.label}</span>
+                            <strong>{reason.count}</strong>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {data.reasonsByFamily.length === 0 && <div className="empty-state">Sin datos.</div>}
+                </div>
+              </section>
+
+              <section className="db-section panel">
+                <h2 className="db-section-title">Origen de etiquetas</h2>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {data.routeSourceBreakdown.map((source) => (
+                    <PercentBar
+                      key={source.source ?? 'sin-fuente'}
+                      label={source.label}
+                      value={source.percent}
+                      color={source.source ? 'var(--gummy-teal)' : 'var(--ink-muted)'}
+                    />
+                  ))}
+                  {data.routeSourceBreakdown.length === 0 && <div className="empty-state">Sin datos.</div>}
+                </div>
+              </section>
+            </div>
+
+            <section className="db-section">
+              <h2 className="db-section-title">Sentimiento de clientes</h2>
+              <div className="db-kpi-grid">
+                <KpiCard
+                  label={sentimentMolesto.label}
+                  value={`${sentimentMolesto.percent}%`}
+                  sub={`${sentimentMolesto.count} tickets`}
+                  tone={sentimentMolesto.percent > 25 ? 'error' : sentimentMolesto.percent > 12 ? 'warning' : undefined}
+                />
+                <KpiCard
+                  label={sentimentNeutral.label}
+                  value={`${sentimentNeutral.percent}%`}
+                  sub={`${sentimentNeutral.count} tickets`}
+                />
+                <KpiCard
+                  label={sentimentContento.label}
+                  value={`${sentimentContento.percent}%`}
+                  sub={`${sentimentContento.count} tickets`}
+                  tone={sentimentContento.percent >= 35 ? 'ok' : undefined}
+                />
+                <KpiCard
+                  label="Cobertura"
+                  value={`${data.sentimentCoverage}%`}
+                  sub="del periodo"
+                  tone={data.sentimentCoverage >= 80 ? 'ok' : data.sentimentCoverage >= 50 ? 'warning' : 'error'}
+                />
+              </div>
+            </section>
+
+            <section className="db-section panel">
+              <h2 className="db-section-title">Sentimiento por motivo</h2>
+              <div className="db-stacked-list">
+                {data.sentimentByFamily.map((item) => (
+                  <div key={item.family} className="db-stacked-row">
+                    <div className="db-stacked-head">
+                      <strong>{item.label}</strong>
+                      <span>{item.count}</span>
+                    </div>
+                    <StackedBar
+                      segments={[
+                        { key: 'molesto', label: 'Molestos', count: item.molesto },
+                        { key: 'neutral', label: 'Neutrales', count: item.neutral },
+                        { key: 'contento', label: 'Contentos', count: item.contento },
+                      ]}
+                    />
+                    <div className="db-stacked-legend">
+                      <span>{item.molestoPercent}% molestos</span>
+                      <span>{item.neutralPercent}% neutrales</span>
+                      <span>{item.contentoPercent}% contentos</span>
+                    </div>
+                  </div>
+                ))}
+                {data.sentimentByFamily.length === 0 && <div className="empty-state">Sin datos de sentimiento.</div>}
               </div>
             </section>
 

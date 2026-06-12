@@ -1,11 +1,28 @@
 import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import {
+  FAMILY_LABELS,
+  SENTIMENT_LABELS,
+  routeSourceLabel,
+  templateFamily,
+  templateLabelFor,
+  type SentimentValue,
+  type TemplateFamily
+} from '@/lib/template-labels';
 
 export const dynamic = 'force-dynamic';
 
 type RawRow = { date: Date; count: bigint };
 type RawAvgRow = { date: Date; avgMinutes: number | null };
+type ReasonAccumulator = {
+  family: TemplateFamily;
+  familyLabel: string;
+  count: number;
+  reasons: Array<{ id: string | null; label: string; count: number; percentOfTotal: number }>;
+};
+
+const SENTIMENT_VALUES: SentimentValue[] = ['molesto', 'neutral', 'contento'];
 
 function days(period: string): number {
   if (period === '30d') return 30;
@@ -23,6 +40,37 @@ function fillDays(rows: { date: string; count: number }[], d: number): { date: s
     result.push({ date: key, count: map.get(key) ?? 0 });
   }
   return result;
+}
+
+function percent(count: number, total: number): number {
+  return total > 0 ? Math.round((count / total) * 100) : 0;
+}
+
+function isSentiment(value: string | null): value is SentimentValue {
+  return SENTIMENT_VALUES.includes(value as SentimentValue);
+}
+
+function emptySentimentCounts(): Record<SentimentValue, number> {
+  return { molesto: 0, neutral: 0, contento: 0 };
+}
+
+function addReason(
+  groups: Map<TemplateFamily, ReasonAccumulator>,
+  family: TemplateFamily,
+  reason: { id: string | null; label: string; count: number; percentOfTotal: number }
+) {
+  const existing =
+    groups.get(family) ??
+    {
+      family,
+      familyLabel: FAMILY_LABELS[family],
+      count: 0,
+      reasons: []
+    };
+
+  existing.count += reason.count;
+  existing.reasons.push(reason);
+  groups.set(family, existing);
 }
 
 export async function GET(request: Request) {
@@ -53,6 +101,10 @@ export async function GET(request: Request) {
     totalInPeriod,
     escalatedInPeriod,
     sensitiveInPeriod,
+    rawReasons,
+    rawRouteSources,
+    rawSentiments,
+    rawSentimentByFamily,
   ] = await Promise.all([
     db.ticket.count({ where: { status: { in: ['pending_review', 'new', 'ai_generated'] } } }),
     db.ticket.findMany({
@@ -99,6 +151,29 @@ export async function GET(request: Request) {
         OR: [{ riskFlags: { not: null } }, { escalationRecommended: true }],
       },
     }),
+    db.ticket.groupBy({
+      by: ['routedTemplateId'],
+      _count: { id: true },
+      where: { receivedAt: { gte: startDate }, routedTemplateId: { not: null } },
+      orderBy: { _count: { id: 'desc' } },
+    }),
+    db.ticket.groupBy({
+      by: ['routeSource'],
+      _count: { id: true },
+      where: { receivedAt: { gte: startDate }, routeSource: { not: null } },
+      orderBy: { _count: { id: 'desc' } },
+    }),
+    db.ticket.groupBy({
+      by: ['sentiment'],
+      _count: { id: true },
+      where: { receivedAt: { gte: startDate }, sentiment: { not: null } },
+      orderBy: { _count: { id: 'desc' } },
+    }),
+    db.ticket.groupBy({
+      by: ['sentiment', 'routedTemplateId', 'category'],
+      _count: { id: true },
+      where: { receivedAt: { gte: startDate }, sentiment: { not: null } },
+    }),
   ]);
 
   const avgWaitMinutes =
@@ -128,6 +203,75 @@ export async function GET(request: Request) {
     totalInPeriod > 0 ? Math.round((escalatedInPeriod / totalInPeriod) * 100) : 0;
   const sensitiveRate =
     totalInPeriod > 0 ? Math.round((sensitiveInPeriod / totalInPeriod) * 100) : 0;
+  const closedLabelCount = rawReasons.reduce((sum, reason) => sum + reason._count.id, 0);
+  const unlabeledCount = Math.max(totalInPeriod - closedLabelCount, 0);
+  const reasonGroups = new Map<TemplateFamily, ReasonAccumulator>();
+
+  for (const reason of rawReasons) {
+    const metadata = templateLabelFor(reason.routedTemplateId);
+    addReason(reasonGroups, metadata.family, {
+      id: reason.routedTemplateId,
+      label: metadata.label,
+      count: reason._count.id,
+      percentOfTotal: percent(reason._count.id, totalInPeriod)
+    });
+  }
+
+  if (unlabeledCount > 0) {
+    const metadata = templateLabelFor(null);
+    addReason(reasonGroups, 'sin_etiqueta', {
+      id: null,
+      label: metadata.label,
+      count: unlabeledCount,
+      percentOfTotal: percent(unlabeledCount, totalInPeriod)
+    });
+  }
+
+  const routeSourceCount = rawRouteSources.reduce((sum, source) => sum + source._count.id, 0);
+  const missingRouteSourceCount = Math.max(totalInPeriod - routeSourceCount, 0);
+
+  const sentimentCounts = emptySentimentCounts();
+  for (const row of rawSentiments) {
+    if (isSentiment(row.sentiment)) {
+      sentimentCounts[row.sentiment] = row._count.id;
+    }
+  }
+  const sentimentAnalyzed = SENTIMENT_VALUES.reduce((sum, sentiment) => sum + sentimentCounts[sentiment], 0);
+
+  const sentimentFamilyMap = new Map<
+    string,
+    {
+      family: string;
+      label: string;
+      count: number;
+      sentiments: Record<SentimentValue, number>;
+    }
+  >();
+
+  for (const row of rawSentimentByFamily) {
+    if (!isSentiment(row.sentiment)) continue;
+
+    const family = row.routedTemplateId
+      ? templateFamily(row.routedTemplateId)
+      : row.category
+        ? `category:${row.category}`
+        : 'sin_etiqueta';
+    const label = row.routedTemplateId
+      ? FAMILY_LABELS[templateFamily(row.routedTemplateId)]
+      : row.category || FAMILY_LABELS.sin_etiqueta;
+
+    const current =
+      sentimentFamilyMap.get(family) ?? {
+        family,
+        label,
+        count: 0,
+        sentiments: emptySentimentCounts()
+      };
+
+    current.count += row._count.id;
+    current.sentiments[row.sentiment] += row._count.id;
+    sentimentFamilyMap.set(family, current);
+  }
 
   return NextResponse.json({
     ok: true,
@@ -147,6 +291,61 @@ export async function GET(request: Request) {
     topIntents: rawIntents
       .filter((i) => i.intent)
       .map((i) => ({ intent: i.intent!, count: i._count.id })),
+    reasonsByFamily: Array.from(reasonGroups.values())
+      .sort((a, b) => b.count - a.count)
+      .map((group) => ({
+        family: group.family,
+        label: group.familyLabel,
+        count: group.count,
+        percent: percent(group.count, totalInPeriod),
+        topReasons: group.reasons
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 6)
+          .map((reason) => ({
+            ...reason,
+            percentOfFamily: percent(reason.count, group.count)
+          }))
+      })),
+    routeSourceBreakdown: [
+      ...rawRouteSources.map((source) => ({
+        source: source.routeSource!,
+        label: routeSourceLabel(source.routeSource),
+        count: source._count.id,
+        percent: percent(source._count.id, totalInPeriod)
+      })),
+      ...(missingRouteSourceCount > 0
+        ? [
+            {
+              source: null,
+              label: routeSourceLabel(null),
+              count: missingRouteSourceCount,
+              percent: percent(missingRouteSourceCount, totalInPeriod)
+            }
+          ]
+        : [])
+    ],
+    closedLabelRate: percent(closedLabelCount, totalInPeriod),
+    sentimentBreakdown: SENTIMENT_VALUES.map((sentiment) => ({
+      sentiment,
+      label: SENTIMENT_LABELS[sentiment],
+      count: sentimentCounts[sentiment],
+      percent: percent(sentimentCounts[sentiment], sentimentAnalyzed)
+    })),
+    sentimentCoverage: percent(sentimentAnalyzed, totalInPeriod),
+    sentimentByFamily: Array.from(sentimentFamilyMap.values())
+      .map((group) => ({
+        family: group.family,
+        label: group.label,
+        count: group.count,
+        molesto: group.sentiments.molesto,
+        neutral: group.sentiments.neutral,
+        contento: group.sentiments.contento,
+        molestoPercent: percent(group.sentiments.molesto, group.count),
+        neutralPercent: percent(group.sentiments.neutral, group.count),
+        contentoPercent: percent(group.sentiments.contento, group.count)
+      }))
+      .sort((a, b) => b.molestoPercent - a.molestoPercent || b.count - a.count)
+      .slice(0, 8),
     totalInPeriod,
     aiAccuracy,
     abandonRate,
