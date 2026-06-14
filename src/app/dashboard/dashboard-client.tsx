@@ -45,6 +45,40 @@ type SentimentByFamily = {
   contentoPercent: number;
 };
 
+type SendQuality = {
+  sentTotal: number;
+  approvedSent: number;
+  editedSent: number;
+  sentWithoutEditRate: number;
+  editedBeforeSendRate: number;
+  avgEditIntensityEdited: number;
+  avgEditIntensityAll: number;
+};
+
+type QualityBySendDay = {
+  date: string;
+  sentTotal: number;
+  approvedSent: number;
+  editedSent: number;
+  sentWithoutEditRate: number;
+  editedBeforeSendRate: number;
+  avgEditIntensity: number;
+};
+
+type LabelingQuality = {
+  eligibleForRouting: number;
+  closedLabelCount: number;
+  newUnlabeledCount: number;
+  historicalUnclassifiedCount: number;
+  closedLabelRate: number;
+};
+
+type SentimentQuality = {
+  eligibleForSentiment: number;
+  sentimentAnalyzed: number;
+  sentimentCoverage: number;
+};
+
 type DashboardData = {
   ok: boolean;
   period: Period;
@@ -60,6 +94,10 @@ type DashboardData = {
   sentimentBreakdown: SentimentBreakdown[];
   sentimentCoverage: number;
   sentimentByFamily: SentimentByFamily[];
+  sendQuality: SendQuality;
+  qualityBySendDay: QualityBySendDay[];
+  labelingQuality: LabelingQuality;
+  sentimentQuality: SentimentQuality;
   totalInPeriod: number;
   aiAccuracy: number;
   abandonRate: number;
@@ -130,6 +168,34 @@ function BarChart({ data, valueKey }: { data: { date: string; [k: string]: numbe
           {i % Math.ceil(data.length / 7) === 0 && (
             <span className="db-bar-label">{formatDate(d.date)}</span>
           )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function QualityTrend({ data }: { data: QualityBySendDay[] }) {
+  const maxSent = Math.max(...data.map((day) => day.sentTotal), 1);
+
+  return (
+    <div className="db-quality-trend">
+      {data.map((day) => (
+        <div key={day.date} className="db-quality-day">
+          <div className="db-quality-bars">
+            <span
+              className="db-quality-bar db-quality-approved"
+              style={{ height: `${Math.max(4, Math.round((day.approvedSent / maxSent) * 100))}%` }}
+              title={`${formatDate(day.date)}: ${day.approvedSent} sin editar`}
+            />
+            <span
+              className="db-quality-bar db-quality-edited"
+              style={{ height: `${Math.max(4, Math.round((day.editedSent / maxSent) * 100))}%` }}
+              title={`${formatDate(day.date)}: ${day.editedSent} editados`}
+            />
+          </div>
+          <span className="db-quality-date">{formatDate(day.date)}</span>
+          <strong className="db-quality-rate">{day.sentWithoutEditRate}%</strong>
+          <span className="db-quality-edit">{day.avgEditIntensity}% edit</span>
         </div>
       ))}
     </div>
@@ -322,30 +388,39 @@ export function DashboardClient() {
               <h2 className="db-section-title">Calidad y satisfacción</h2>
               <div className="db-kpi-grid">
                 <KpiCard
-                  label="Precisión IA"
-                  value={`${data.aiAccuracy}%`}
-                  sub="aprobados sin editar"
-                  tone={data.aiAccuracy >= 70 ? 'ok' : data.aiAccuracy >= 50 ? 'warning' : 'error'}
+                  label="Enviado sin editar"
+                  value={`${data.sendQuality.sentWithoutEditRate}%`}
+                  sub={`${data.sendQuality.approvedSent} de ${data.sendQuality.sentTotal} enviados`}
+                  tone={data.sendQuality.sentWithoutEditRate >= 70 ? 'ok' : data.sendQuality.sentWithoutEditRate >= 50 ? 'warning' : 'error'}
                 />
                 <KpiCard
-                  label="Tasa de escalación"
-                  value={`${data.escalationRate}%`}
-                  sub="requirieron atención humana"
-                  tone={data.escalationRate > 20 ? 'warning' : undefined}
+                  label="Editado antes de enviar"
+                  value={`${data.sendQuality.editedBeforeSendRate}%`}
+                  sub={`${data.sendQuality.editedSent} de ${data.sendQuality.sentTotal} enviados`}
+                  tone={data.sendQuality.editedBeforeSendRate > 50 ? 'warning' : undefined}
                 />
                 <KpiCard
-                  label="Tasa de abandono"
-                  value={`${data.abandonRate}%`}
-                  sub="tickets descartados"
-                  tone={data.abandonRate > 15 ? 'warning' : undefined}
+                  label="Intensidad de edicion"
+                  value={`${data.sendQuality.avgEditIntensityEdited}%`}
+                  sub="promedio sobre editados"
+                  tone={data.sendQuality.avgEditIntensityEdited > 45 ? 'warning' : data.sendQuality.avgEditIntensityEdited <= 20 ? 'ok' : undefined}
                 />
                 <KpiCard
                   label="Casos sensibles"
                   value={`${data.sensitiveRate}%`}
-                  sub="con riskFlags activos"
+                  sub="riesgo real o escalados"
                   tone={data.sensitiveRate > 30 ? 'warning' : undefined}
                 />
               </div>
+            </section>
+
+            <section className="db-section panel">
+              <h2 className="db-section-title">Calidad diaria por fecha de envio</h2>
+              {data.qualityBySendDay.some((day) => day.sentTotal > 0) ? (
+                <QualityTrend data={data.qualityBySendDay} />
+              ) : (
+                <div className="empty-state">Sin respuestas enviadas en este periodo.</div>
+              )}
             </section>
 
             <section className="db-section">
@@ -353,25 +428,26 @@ export function DashboardClient() {
               <div className="db-kpi-grid">
                 <KpiCard
                   label="Etiqueta cerrada"
-                  value={`${data.closedLabelRate}%`}
-                  sub={`${data.totalInPeriod} tickets del periodo`}
-                  tone={data.closedLabelRate >= 80 ? 'ok' : data.closedLabelRate >= 50 ? 'warning' : 'error'}
+                  value={`${data.labelingQuality.closedLabelRate}%`}
+                  sub={`${data.labelingQuality.closedLabelCount} de ${data.labelingQuality.eligibleForRouting} elegibles`}
+                  tone={data.labelingQuality.closedLabelRate >= 80 ? 'ok' : data.labelingQuality.closedLabelRate >= 50 ? 'warning' : 'error'}
                 />
                 <KpiCard
                   label="Sentimiento analizado"
-                  value={`${data.sentimentCoverage}%`}
-                  sub="tickets con sentimiento"
-                  tone={data.sentimentCoverage >= 80 ? 'ok' : data.sentimentCoverage >= 50 ? 'warning' : 'error'}
+                  value={`${data.sentimentQuality.sentimentCoverage}%`}
+                  sub={`${data.sentimentQuality.sentimentAnalyzed} de ${data.sentimentQuality.eligibleForSentiment} elegibles`}
+                  tone={data.sentimentQuality.sentimentCoverage >= 80 ? 'ok' : data.sentimentQuality.sentimentCoverage >= 50 ? 'warning' : 'error'}
                 />
                 <KpiCard
-                  label="Familias activas"
-                  value={data.reasonsByFamily.filter((reason) => reason.family !== 'sin_etiqueta').length}
-                  sub="con etiqueta cerrada"
+                  label="Sin etiqueta nueva"
+                  value={data.labelingQuality.newUnlabeledCount}
+                  sub="requiere revisar router"
+                  tone={data.labelingQuality.newUnlabeledCount > 0 ? 'warning' : 'ok'}
                 />
                 <KpiCard
-                  label="Fuentes de ruta"
-                  value={data.routeSourceBreakdown.length}
-                  sub="orígenes detectados"
+                  label="Historico sin clasificar"
+                  value={data.labelingQuality.historicalUnclassifiedCount}
+                  sub="fuera del denominador"
                 />
               </div>
             </section>
@@ -441,9 +517,9 @@ export function DashboardClient() {
                 />
                 <KpiCard
                   label="Cobertura"
-                  value={`${data.sentimentCoverage}%`}
-                  sub="del periodo"
-                  tone={data.sentimentCoverage >= 80 ? 'ok' : data.sentimentCoverage >= 50 ? 'warning' : 'error'}
+                  value={`${data.sentimentQuality.sentimentCoverage}%`}
+                  sub="de tickets elegibles"
+                  tone={data.sentimentQuality.sentimentCoverage >= 80 ? 'ok' : data.sentimentQuality.sentimentCoverage >= 50 ? 'warning' : 'error'}
                 />
               </div>
             </section>
