@@ -11,7 +11,7 @@ import {
 } from '@/lib/sales-periods';
 
 type Period = PresetPeriod | 'custom';
-type Platform = 'all' | 'shopify' | 'amazon';
+type Platform = 'all' | 'shopify' | 'amazon' | 'tiktok_shop';
 type ChartGranularity = 'day' | 'month';
 
 type SyncStateView = {
@@ -57,7 +57,8 @@ const PERIODS: { id: PresetPeriod; label: string }[] = [
 const PLATFORMS: { id: Platform; label: string }[] = [
   { id: 'all', label: 'Todas' },
   { id: 'shopify', label: 'Shopify' },
-  { id: 'amazon', label: 'Amazon' }
+  { id: 'amazon', label: 'Amazon' },
+  { id: 'tiktok_shop', label: 'TikTok Shop' }
 ];
 
 function formatDate(iso: string) {
@@ -101,7 +102,9 @@ function formatPlatformName(value: string) {
     amazon: 'Amazon',
     amazon_backfill_2026: 'Amazon backfill 2026',
     shopify: 'Shopify',
-    shopify_backfill_2026: 'Shopify backfill 2026'
+    shopify_backfill_2026: 'Shopify backfill 2026',
+    tiktok_shop: 'TikTok Shop',
+    tiktok_shop_backfill_2026: 'TikTok Shop backfill 2026'
   };
   return labels[value] || `${value[0]?.toUpperCase() || ''}${value.slice(1).replace(/_/g, ' ')}`;
 }
