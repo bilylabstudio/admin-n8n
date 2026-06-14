@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import {
+  buildQualityBySendDay,
+  hasMeaningfulRiskFlag,
+  percent,
+  summarizeLabelingQuality,
+  summarizeSendQuality,
+  summarizeSentimentQuality
+} from '@/lib/dashboard-quality';
+import {
   FAMILY_LABELS,
   SENTIMENT_LABELS,
   routeSourceLabel,
@@ -40,10 +48,6 @@ function fillDays(rows: { date: string; count: number }[], d: number): { date: s
     result.push({ date: key, count: map.get(key) ?? 0 });
   }
   return result;
-}
-
-function percent(count: number, total: number): number {
-  return total > 0 ? Math.round((count / total) * 100) : 0;
 }
 
 function isSentiment(value: string | null): value is SentimentValue {
@@ -85,6 +89,10 @@ export async function GET(request: Request) {
   startDate.setDate(startDate.getDate() - d);
   startDate.setHours(0, 0, 0, 0);
 
+  const sendStartDate = new Date();
+  sendStartDate.setDate(sendStartDate.getDate() - (d - 1));
+  sendStartDate.setHours(0, 0, 0, 0);
+
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
 
@@ -100,11 +108,12 @@ export async function GET(request: Request) {
     rawIntents,
     totalInPeriod,
     escalatedInPeriod,
-    sensitiveInPeriod,
     rawReasons,
     rawRouteSources,
     rawSentiments,
     rawSentimentByFamily,
+    sentQualityTickets,
+    classificationTickets,
   ] = await Promise.all([
     db.ticket.count({ where: { status: { in: ['pending_review', 'new', 'ai_generated'] } } }),
     db.ticket.findMany({
@@ -145,12 +154,6 @@ export async function GET(request: Request) {
     }),
     db.ticket.count({ where: { receivedAt: { gte: startDate } } }),
     db.ticket.count({ where: { receivedAt: { gte: startDate }, escalationRecommended: true } }),
-    db.ticket.count({
-      where: {
-        receivedAt: { gte: startDate },
-        OR: [{ riskFlags: { not: null } }, { escalationRecommended: true }],
-      },
-    }),
     db.ticket.groupBy({
       by: ['routedTemplateId'],
       _count: { id: true },
@@ -174,6 +177,30 @@ export async function GET(request: Request) {
       _count: { id: true },
       where: { receivedAt: { gte: startDate }, sentiment: { not: null } },
     }),
+    db.ticket.findMany({
+      where: {
+        sentAt: { gte: sendStartDate },
+        status: { in: ['approved_sent', 'edited_sent'] }
+      },
+      select: {
+        status: true,
+        sentAt: true,
+        aiReply: true,
+        finalReply: true
+      }
+    }),
+    db.ticket.findMany({
+      where: { receivedAt: { gte: startDate } },
+      select: {
+        routedTemplateId: true,
+        routeSource: true,
+        caseReasoningJson: true,
+        sentiment: true,
+        sentimentSource: true,
+        riskFlags: true,
+        escalationRecommended: true
+      }
+    }),
   ]);
 
   const avgWaitMinutes =
@@ -192,19 +219,21 @@ export async function GET(request: Request) {
     avgMinutes: r.avgMinutes != null ? Math.round(r.avgMinutes) : null,
   }));
 
-  const approvedSent = statusBreakdown.find((s) => s.status === 'approved_sent')?._count.id ?? 0;
-  const editedSent = statusBreakdown.find((s) => s.status === 'edited_sent')?._count.id ?? 0;
   const discarded = statusBreakdown.find((s) => s.status === 'discarded')?._count.id ?? 0;
+  const sendQuality = summarizeSendQuality(sentQualityTickets);
+  const qualityBySendDay = buildQualityBySendDay(sentQualityTickets, sendStartDate, d);
+  const labelingQuality = summarizeLabelingQuality(classificationTickets);
+  const sentimentQuality = summarizeSentimentQuality(classificationTickets);
+  const sensitiveCount = classificationTickets.filter(
+    (ticket) => ticket.escalationRecommended || hasMeaningfulRiskFlag(ticket.riskFlags)
+  ).length;
 
-  const aiAccuracy =
-    approvedSent + editedSent > 0 ? Math.round((approvedSent / (approvedSent + editedSent)) * 100) : 0;
+  const aiAccuracy = sendQuality.sentWithoutEditRate;
   const abandonRate = totalInPeriod > 0 ? Math.round((discarded / totalInPeriod) * 100) : 0;
   const escalationRate =
     totalInPeriod > 0 ? Math.round((escalatedInPeriod / totalInPeriod) * 100) : 0;
-  const sensitiveRate =
-    totalInPeriod > 0 ? Math.round((sensitiveInPeriod / totalInPeriod) * 100) : 0;
-  const closedLabelCount = rawReasons.reduce((sum, reason) => sum + reason._count.id, 0);
-  const unlabeledCount = Math.max(totalInPeriod - closedLabelCount, 0);
+  const sensitiveRate = percent(sensitiveCount, totalInPeriod);
+  const reasonDenominator = Math.max(labelingQuality.eligibleForRouting, 1);
   const reasonGroups = new Map<TemplateFamily, ReasonAccumulator>();
 
   for (const reason of rawReasons) {
@@ -213,17 +242,17 @@ export async function GET(request: Request) {
       id: reason.routedTemplateId,
       label: metadata.label,
       count: reason._count.id,
-      percentOfTotal: percent(reason._count.id, totalInPeriod)
+      percentOfTotal: percent(reason._count.id, reasonDenominator)
     });
   }
 
-  if (unlabeledCount > 0) {
+  if (labelingQuality.newUnlabeledCount > 0) {
     const metadata = templateLabelFor(null);
     addReason(reasonGroups, 'sin_etiqueta', {
       id: null,
       label: metadata.label,
-      count: unlabeledCount,
-      percentOfTotal: percent(unlabeledCount, totalInPeriod)
+      count: labelingQuality.newUnlabeledCount,
+      percentOfTotal: percent(labelingQuality.newUnlabeledCount, reasonDenominator)
     });
   }
 
@@ -297,7 +326,7 @@ export async function GET(request: Request) {
         family: group.family,
         label: group.familyLabel,
         count: group.count,
-        percent: percent(group.count, totalInPeriod),
+        percent: percent(group.count, reasonDenominator),
         topReasons: group.reasons
           .sort((a, b) => b.count - a.count)
           .slice(0, 6)
@@ -324,14 +353,18 @@ export async function GET(request: Request) {
           ]
         : [])
     ],
-    closedLabelRate: percent(closedLabelCount, totalInPeriod),
+    sendQuality,
+    qualityBySendDay,
+    labelingQuality,
+    sentimentQuality,
+    closedLabelRate: labelingQuality.closedLabelRate,
     sentimentBreakdown: SENTIMENT_VALUES.map((sentiment) => ({
       sentiment,
       label: SENTIMENT_LABELS[sentiment],
       count: sentimentCounts[sentiment],
       percent: percent(sentimentCounts[sentiment], sentimentAnalyzed)
     })),
-    sentimentCoverage: percent(sentimentAnalyzed, totalInPeriod),
+    sentimentCoverage: sentimentQuality.sentimentCoverage,
     sentimentByFamily: Array.from(sentimentFamilyMap.values())
       .map((group) => ({
         family: group.family,
