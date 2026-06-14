@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { editIntensity } from '@/lib/dashboard-quality';
 import { sendApprovedReply } from '@/lib/n8n';
 import {
   appendSentCopy,
@@ -41,6 +42,13 @@ export async function POST(
   if (!ticket) {
     return NextResponse.json({ ok: false, error: 'ticket_not_found' }, { status: 404 });
   }
+
+  const editMetrics = {
+    edited: true,
+    edit_intensity: editIntensity(ticket.aiReply, finalReply),
+    ai_reply_length: ticket.aiReply.trim().length,
+    final_reply_length: finalReply.trim().length
+  };
 
   const result = await sendApprovedReply({
     ticket_id: ticket.id,
@@ -155,6 +163,7 @@ export async function POST(
       metadataJson: {
         action: 'thread_follow_up_sent',
         thread_message_id: threadMessage.id,
+        ...editMetrics,
         result,
         webmail_sync: {
           answered: answeredSync,

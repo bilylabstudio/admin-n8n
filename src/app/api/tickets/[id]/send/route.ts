@@ -1,5 +1,6 @@
 import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { editIntensity } from '@/lib/dashboard-quality';
 import { sendApprovedReply } from '@/lib/n8n';
 import { redirectToApp } from '@/lib/redirects';
 import { canReview, isReplyEdited } from '@/lib/status';
@@ -23,6 +24,12 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const edited = isReplyEdited(finalReply, ticket.aiReply);
   const nextStatus = edited ? 'edited_sent' : 'approved_sent';
   const approvalAction = edited ? 'edited' : 'approved';
+  const editMetrics = {
+    edited,
+    edit_intensity: edited ? editIntensity(ticket.aiReply, finalReply) : 0,
+    ai_reply_length: ticket.aiReply.trim().length,
+    final_reply_length: finalReply.trim().length
+  };
 
   const result = await sendApprovedReply({
     ticket_id: ticket.id,
@@ -119,7 +126,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       afterStatus: nextStatus,
       metadataJson: {
         ...result,
-        edited,
+        ...editMetrics,
         webmail_sync: {
           answered: answeredSync,
           sent_copy: sentCopySync
