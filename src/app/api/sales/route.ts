@@ -43,7 +43,7 @@ export async function GET(request: Request) {
   ]);
 
   const chartGranularity = chartGranularityForRange(range.since, range.until);
-  const { kpis, byDay, byPlatform } = aggregate(orders, {
+  const { kpis, byDay, byPlatform, byFinancialStatus } = aggregate(orders, {
     since: range.since,
     until: range.until,
     granularity: chartGranularity
@@ -61,6 +61,7 @@ export async function GET(request: Request) {
     syncState: viewSyncState(syncState),
     kpis,
     byDay,
-    byPlatform
+    byPlatform,
+    byFinancialStatus
   });
 }

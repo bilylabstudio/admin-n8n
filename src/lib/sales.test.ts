@@ -85,7 +85,7 @@ describe('chartGranularityForRange', () => {
 
 describe('aggregate', () => {
   it('returns zeroed KPIs for empty input', () => {
-    const { kpis, byDay, byPlatform } = aggregate([]);
+    const { kpis, byDay, byPlatform, byFinancialStatus } = aggregate([]);
     expect(kpis.totalOrders).toBe(0);
     expect(kpis.grossRevenue).toBe(0);
     expect(kpis.netRevenue).toBe(0);
@@ -94,6 +94,7 @@ describe('aggregate', () => {
     expect(kpis.currency).toBe('EUR');
     expect(byDay).toEqual([]);
     expect(byPlatform).toEqual([]);
+    expect(byFinancialStatus).toEqual([]);
   });
 
   it('computes gross, net, refund rate, AOV and units/order', () => {
@@ -197,6 +198,40 @@ describe('aggregate', () => {
     expect(byPlatform).toEqual([
       { platform: 'shopify', orders: 1, revenue: 120 },
       { platform: 'amazon', orders: 2, revenue: 100 }
+    ]);
+  });
+
+  it('breaks Amazon revenue down by financial status', () => {
+    const orders: AggregateInput[] = [
+      order({ platform: 'amazon', processedAt: new Date('2026-06-01T10:00:00Z'), financialStatus: 'paid', totalPrice: 100 as never, totalUnits: 2 }),
+      order({ platform: 'amazon', processedAt: new Date('2026-06-01T11:00:00Z'), financialStatus: 'pending', totalPrice: 80 as never, totalUnits: 1 }),
+      order({
+        platform: 'amazon',
+        processedAt: new Date('2026-06-02T11:00:00Z'),
+        financialStatus: 'partially_refunded',
+        totalPrice: 60 as never,
+        totalRefunded: 20 as never,
+        totalUnits: 1
+      }),
+      order({
+        platform: 'amazon',
+        processedAt: new Date('2026-06-03T11:00:00Z'),
+        financialStatus: 'refunded',
+        totalPrice: 50 as never,
+        totalRefunded: 50 as never,
+        totalUnits: 1
+      })
+    ];
+
+    const { kpis, byFinancialStatus } = aggregate(orders);
+
+    expect(kpis.grossRevenue).toBe(290);
+    expect(kpis.netRevenue).toBe(220);
+    expect(byFinancialStatus).toEqual([
+      { status: 'paid', orders: 1, grossRevenue: 100, refundedRevenue: 0, netRevenue: 100, units: 2 },
+      { status: 'pending', orders: 1, grossRevenue: 80, refundedRevenue: 0, netRevenue: 80, units: 1 },
+      { status: 'partially_refunded', orders: 1, grossRevenue: 60, refundedRevenue: 20, netRevenue: 40, units: 1 },
+      { status: 'refunded', orders: 1, grossRevenue: 50, refundedRevenue: 50, netRevenue: 0, units: 1 }
     ]);
   });
 

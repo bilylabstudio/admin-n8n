@@ -15,6 +15,15 @@ export type SalesKpis = {
   currency: string;
 };
 
+export type SalesFinancialStatusBreakdown = {
+  status: string;
+  orders: number;
+  grossRevenue: number;
+  refundedRevenue: number;
+  netRevenue: number;
+  units: number;
+};
+
 export type SyncStateView = {
   platform: string;
   lastSyncRunAt: string | null;
@@ -36,6 +45,7 @@ export type SalesResponse = {
   kpis: SalesKpis;
   byDay: Array<{ date: string; orders: number; revenue: number; units: number }>;
   byPlatform: Array<{ platform: string; orders: number; revenue: number }>;
+  byFinancialStatus: SalesFinancialStatusBreakdown[];
 };
 
 export type AggregateInput = Pick<
@@ -126,6 +136,7 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
   kpis: SalesKpis;
   byDay: SalesResponse['byDay'];
   byPlatform: SalesResponse['byPlatform'];
+  byFinancialStatus: SalesResponse['byFinancialStatus'];
 } {
   const totalOrders = orders.length;
 
@@ -175,6 +186,35 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
     .sort(([, a], [, b]) => b.revenue - a.revenue)
     .map(([platform, v]) => ({ platform, orders: v.orders, revenue: round2(v.revenue) }));
 
+  const byFinancialStatusMap = new Map<string, SalesFinancialStatusBreakdown>();
+  for (const o of orders) {
+    const status = normalizeFinancialStatus(o.financialStatus);
+    const grossRevenue = toNumber(o.totalPrice);
+    const refundedRevenue = toNumber(o.totalRefunded);
+    const cur = byFinancialStatusMap.get(status) || {
+      status,
+      orders: 0,
+      grossRevenue: 0,
+      refundedRevenue: 0,
+      netRevenue: 0,
+      units: 0
+    };
+    cur.orders += 1;
+    cur.grossRevenue += grossRevenue;
+    cur.refundedRevenue += refundedRevenue;
+    cur.netRevenue += grossRevenue - refundedRevenue;
+    cur.units += o.totalUnits;
+    byFinancialStatusMap.set(status, cur);
+  }
+  const byFinancialStatus = [...byFinancialStatusMap.values()]
+    .sort((a, b) => financialStatusSortOrder(a.status) - financialStatusSortOrder(b.status) || b.grossRevenue - a.grossRevenue)
+    .map((v) => ({
+      ...v,
+      grossRevenue: round2(v.grossRevenue),
+      refundedRevenue: round2(v.refundedRevenue),
+      netRevenue: round2(v.netRevenue)
+    }));
+
   return {
     kpis: {
       grossRevenue: round2(grossRevenue),
@@ -188,7 +228,8 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
       currency
     },
     byDay,
-    byPlatform
+    byPlatform,
+    byFinancialStatus
   };
 }
 
@@ -263,6 +304,23 @@ function fillDateRange(
 function bucketKey(date: Date, granularity: ChartGranularity): string {
   const iso = date.toISOString();
   return granularity === 'month' ? `${iso.slice(0, 7)}-01` : iso.slice(0, 10);
+}
+
+function normalizeFinancialStatus(value: string | null | undefined) {
+  const normalized = String(value || 'unknown').trim().toLowerCase();
+  return normalized || 'unknown';
+}
+
+function financialStatusSortOrder(status: string) {
+  const order: Record<string, number> = {
+    paid: 0,
+    pending: 1,
+    partially_refunded: 2,
+    refunded: 3,
+    voided: 4,
+    unknown: 99
+  };
+  return order[status] ?? 50;
 }
 
 function parseDateInput(value: string, boundary: 'start' | 'end'): Date | null {

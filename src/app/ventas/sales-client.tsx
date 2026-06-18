@@ -45,9 +45,18 @@ type SalesData = {
   };
   byDay: { date: string; orders: number; revenue: number; units: number }[];
   byPlatform: { platform: string; orders: number; revenue: number }[];
+  byFinancialStatus: {
+    status: string;
+    orders: number;
+    grossRevenue: number;
+    refundedRevenue: number;
+    netRevenue: number;
+    units: number;
+  }[];
 };
 
 const POLL_MS = 60_000;
+const SYNC_STATUS_COLLAPSED_STORAGE_KEY = 'vgummies:sales-sync-status-collapsed';
 const PERIODS: { id: PresetPeriod; label: string }[] = [
   { id: 'ytd', label: 'Este año' },
   { id: '7d', label: '7 días' },
@@ -276,35 +285,149 @@ function PercentBar({ value, label, hint }: { value: number; label: string; hint
   );
 }
 
-function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
-  if (!states.length) {
-    return (
-      <section className="db-section panel" style={{ padding: 14 }}>
-        <p style={{ margin: 0 }}>Aún no se ha ejecutado ningún sync.</p>
-      </section>
+function combineStatusBreakdown(
+  rows: SalesData['byFinancialStatus'],
+  statuses: string[]
+): SalesData['byFinancialStatus'][number] {
+  const wanted = new Set(statuses);
+  return rows
+    .filter((row) => wanted.has(row.status))
+    .reduce(
+      (acc, row) => ({
+        status: statuses.join('+'),
+        orders: acc.orders + row.orders,
+        grossRevenue: acc.grossRevenue + row.grossRevenue,
+        refundedRevenue: acc.refundedRevenue + row.refundedRevenue,
+        netRevenue: acc.netRevenue + row.netRevenue,
+        units: acc.units + row.units
+      }),
+      { status: statuses.join('+'), orders: 0, grossRevenue: 0, refundedRevenue: 0, netRevenue: 0, units: 0 }
     );
-  }
+}
+
+function formatFinancialStatusLabel(status: string, platform?: string) {
+  const normalized = String(status || '').toLowerCase();
+  if (platform === 'amazon' && normalized === 'pending') return 'pendiente de liquidación';
+  const labels: Record<string, string> = {
+    paid: 'pagado',
+    pending: 'pendiente',
+    partially_refunded: 'reembolso parcial',
+    refunded: 'reembolsado',
+    voided: 'anulado'
+  };
+  return labels[normalized] || status || '-';
+}
+
+function AmazonStatusBreakdown({
+  rows,
+  currency
+}: {
+  rows: SalesData['byFinancialStatus'];
+  currency: string;
+}) {
+  const paid = combineStatusBreakdown(rows, ['paid']);
+  const pending = combineStatusBreakdown(rows, ['pending']);
+  const refunded = combineStatusBreakdown(rows, ['partially_refunded', 'refunded']);
+
+  if (!rows.length) return null;
+
   return (
-    <section className="db-section panel" style={{ padding: 14 }}>
-      <div style={{ display: 'grid', gap: 6 }}>
-        {states.map((s) => {
-          const ok = s.lastSyncStatus === 'ok';
-          const failed = s.lastSyncStatus === 'failed';
-          return (
-            <div key={s.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <strong>{formatPlatformName(s.platform)}</strong>
-              <span style={{ color: ok ? 'var(--gummy-teal)' : failed ? 'var(--error-red)' : 'var(--ink-soft)' }}>
-                {ok ? '✓ OK' : failed ? '✕ Error' : '— Sin info'}
-              </span>
-              {s.lastSyncRunAt && <span style={{ color: 'var(--ink-soft)' }}>último run {formatRelative(s.lastSyncRunAt)}</span>}
-              <span style={{ color: 'var(--ink-soft)' }}>{formatNumber(s.ordersImported)} pedidos importados</span>
-              {failed && s.lastSyncError && (
-                <span style={{ color: 'var(--error-red)', flexBasis: '100%' }}>{s.lastSyncError}</span>
-              )}
-            </div>
-          );
-        })}
+    <section className="db-section">
+      <h2 className="db-section-title">Amazon por estado</h2>
+      <div className="db-kpi-grid">
+        <KpiCard
+          label="Liberado / pagado"
+          value={formatMoney(paid.grossRevenue, currency)}
+          sub={`${formatNumber(paid.orders)} pedidos`}
+          tone="ok"
+        />
+        <KpiCard
+          label="Pendiente liquidación"
+          value={formatMoney(pending.grossRevenue, currency)}
+          sub={`${formatNumber(pending.orders)} pedidos Amazon`}
+          tone={pending.orders > 0 ? 'warning' : undefined}
+        />
+        <KpiCard
+          label="Con reembolso"
+          value={formatMoney(refunded.grossRevenue, currency)}
+          sub={`${formatNumber(refunded.orders)} pedidos · reembolsado ${formatMoney(refunded.refundedRevenue, currency)}`}
+          tone={refunded.orders > 0 ? 'warning' : undefined}
+        />
       </div>
+    </section>
+  );
+}
+
+function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const okCount = states.filter((s) => s.lastSyncStatus === 'ok').length;
+  const failedCount = states.filter((s) => s.lastSyncStatus === 'failed').length;
+  const statusSummary = states.length
+    ? `${okCount} OK${failedCount ? `, ${failedCount} error` : ''}`
+    : 'Sin ejecuciones';
+
+  useEffect(() => {
+    try {
+      setCollapsed(window.localStorage.getItem(SYNC_STATUS_COLLAPSED_STORAGE_KEY) === '1');
+    } catch {
+      setCollapsed(false);
+    }
+  }, []);
+
+  function toggleCollapsed() {
+    setCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(SYNC_STATUS_COLLAPSED_STORAGE_KEY, next ? '1' : '0');
+      } catch {
+        // Ignore storage errors; the panel still toggles for the current session.
+      }
+      return next;
+    });
+  }
+
+  return (
+    <section className="db-section panel" style={{ padding: collapsed ? '10px 14px' : 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <strong>Estado de sincronización</strong>
+          <span style={{ color: 'var(--ink-soft)', fontSize: 13 }}>{statusSummary}</span>
+        </div>
+        <button
+          className="ghost-button"
+          type="button"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-controls="sales-sync-status-details"
+        >
+          {collapsed ? 'Mostrar' : 'Ocultar'}
+        </button>
+      </div>
+      {!collapsed && (
+        <div id="sales-sync-status-details" style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+          {!states.length ? (
+            <p style={{ margin: 0 }}>Aún no se ha ejecutado ningún sync.</p>
+          ) : (
+            states.map((s) => {
+              const ok = s.lastSyncStatus === 'ok';
+              const failed = s.lastSyncStatus === 'failed';
+              return (
+                <div key={s.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <strong>{formatPlatformName(s.platform)}</strong>
+                  <span style={{ color: ok ? 'var(--gummy-teal)' : failed ? 'var(--error-red)' : 'var(--ink-soft)' }}>
+                    {ok ? '✓ OK' : failed ? '✕ Error' : '— Sin info'}
+                  </span>
+                  {s.lastSyncRunAt && <span style={{ color: 'var(--ink-soft)' }}>último run {formatRelative(s.lastSyncRunAt)}</span>}
+                  <span style={{ color: 'var(--ink-soft)' }}>{formatNumber(s.ordersImported)} pedidos importados</span>
+                  {failed && s.lastSyncError && (
+                    <span style={{ color: 'var(--error-red)', flexBasis: '100%' }}>{s.lastSyncError}</span>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -518,6 +641,8 @@ export function SalesClient() {
               </div>
             </section>
 
+            {platform === 'amazon' && <AmazonStatusBreakdown rows={data.byFinancialStatus} currency={currency} />}
+
             <div className="db-two-col">
               <section className="db-section panel">
                 <h2 className="db-section-title">Ingresos por {chartPeriodLabel}</h2>
@@ -689,7 +814,7 @@ function RawOrdersSection({
                         </td>
                         <td className="num">{formatMoney(net, rowCurrency)}</td>
                         <td className="num">{o.totalUnits}</td>
-                        <td>{o.financialStatus}</td>
+                        <td>{formatFinancialStatusLabel(o.financialStatus, o.platform)}</td>
                       </tr>
                     );
                   })}
