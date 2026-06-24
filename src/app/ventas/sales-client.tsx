@@ -44,8 +44,28 @@ type SalesData = {
     aov: number;
     currency: string;
   };
+  financeKpis: {
+    totalFees: number;
+    feeRate: number;
+    netAfterFees: number;
+    coveredRevenue: number;
+    coverageRate: number;
+  };
   byDay: { date: string; orders: number; revenue: number; units: number }[];
   byPlatform: { platform: string; orders: number; revenue: number }[];
+  byPlatformFinancial: {
+    platform: string;
+    orders: number;
+    grossRevenue: number;
+    refundedRevenue: number;
+    netRevenue: number;
+    salesMix: number;
+    feeAmount: number;
+    feeRate: number;
+    netAfterFees: number;
+    hasFeeData: boolean;
+    feeProviders: string[];
+  }[];
   byFinancialStatus: {
     status: string;
     orders: number;
@@ -111,16 +131,30 @@ function formatPlatformName(value: string) {
   const labels: Record<string, string> = {
     amazon: 'Amazon',
     amazon_backfill_2026: 'Amazon backfill 2026',
+    amazon_finances: 'Amazon Finances',
     shopify: 'Shopify',
     shopify_backfill_2026: 'Shopify backfill 2026',
+    shopify_payments: 'Shopify Payments',
     tiktok_shop: 'TikTok Shop',
     tiktok_shop_backfill_2026: 'TikTok Shop backfill 2026'
   };
   return labels[value] || `${value[0]?.toUpperCase() || ''}${value.slice(1).replace(/_/g, ' ')}`;
 }
 
+function formatProviderName(value: string) {
+  const labels: Record<string, string> = {
+    amazon_finances: 'Amazon Finances',
+    shopify_payments: 'Shopify Payments'
+  };
+  return labels[value] || formatPlatformName(value);
+}
+
 function formatNumber(value: number, digits = 0) {
   return new Intl.NumberFormat('es-ES', { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
+}
+
+function formatPercent(value: number, digits = 1) {
+  return `${formatNumber(value, digits)}%`;
 }
 
 function formatCompactNumber(value: number) {
@@ -280,15 +314,116 @@ function KpiCard({
   );
 }
 
-function PercentBar({ value, label, hint }: { value: number; label: string; hint?: string }) {
+const CHANNEL_MIX_COLORS = ['#63b2b7', '#334fb4', '#a891f6', '#7d5f00', '#5f596d'];
+
+function ChannelFinancePanel({
+  rows,
+  financeKpis,
+  currency
+}: {
+  rows: SalesData['byPlatformFinancial'];
+  financeKpis: SalesData['financeKpis'];
+  currency: string;
+}) {
+  if (!rows.length) {
+    return (
+      <section className="db-section panel">
+        <h2 className="db-section-title">Mix y comisiones por canal</h2>
+        <div className="empty-state">Sin ventas en el periodo.</div>
+      </section>
+    );
+  }
+
+  const hasFullFeeCoverage = financeKpis.coverageRate >= 99.5;
+
   return (
-    <div className="db-pct-row">
-      <span className="db-pct-label">{label}</span>
-      <div className="db-pct-track">
-        <div className="db-pct-fill" style={{ width: `${Math.min(100, value)}%`, background: 'var(--gummy-teal)' }} />
+    <section className="db-section panel sales-channel-panel">
+      <div className="sales-channel-heading">
+        <div>
+          <h2 className="db-section-title" style={{ margin: 0 }}>Mix y comisiones por canal</h2>
+          <p className="sales-channel-subtitle">Fees API: Amazon Finances y Shopify Payments.</p>
+        </div>
+        <span className={hasFullFeeCoverage ? 'sales-channel-coverage ok' : 'sales-channel-coverage warning'}>
+          {formatPercent(financeKpis.coverageRate, 0)} cobertura fees
+        </span>
       </div>
-      <span className="db-pct-value">{hint ?? `${value}%`}</span>
-    </div>
+
+      <div className="db-kpi-grid sales-finance-kpi-grid">
+        <KpiCard
+          label="Neto post-comisiones"
+          value={formatMoney(financeKpis.netAfterFees, currency)}
+          sub="ventas netas - fees API"
+        />
+        <KpiCard
+          label="Comisiones API"
+          value={formatMoney(financeKpis.totalFees, currency)}
+          sub={`${formatPercent(financeKpis.feeRate, 2)} de ventas netas`}
+          tone={financeKpis.feeRate > 12 ? 'warning' : undefined}
+        />
+        <KpiCard
+          label="Ventas con fee real"
+          value={formatMoney(financeKpis.coveredRevenue, currency)}
+          sub={hasFullFeeCoverage ? 'Amazon + Shopify cubiertos' : 'faltan fees en algun canal'}
+          tone={hasFullFeeCoverage ? 'ok' : 'warning'}
+        />
+      </div>
+
+      <div className="sales-mix-stack" aria-label="Mix de ventas netas por canal">
+        {rows.map((row, index) => (
+          <span
+            key={row.platform}
+            className="sales-mix-segment"
+            style={{
+              width: `${Math.max(0, row.salesMix)}%`,
+              background: CHANNEL_MIX_COLORS[index % CHANNEL_MIX_COLORS.length]
+            }}
+            title={`${formatPlatformName(row.platform)}: ${formatPercent(row.salesMix, 1)}`}
+          />
+        ))}
+      </div>
+
+      <div className="sales-channel-list">
+        {rows.map((row, index) => {
+          const providers = row.feeProviders.map(formatProviderName).join(', ');
+          return (
+            <div key={row.platform} className="sales-channel-row">
+              <div className="sales-channel-name">
+                <span
+                  className="sales-channel-dot"
+                  style={{ background: CHANNEL_MIX_COLORS[index % CHANNEL_MIX_COLORS.length] }}
+                  aria-hidden="true"
+                />
+                <div>
+                  <strong>{formatPlatformName(row.platform)}</strong>
+                  <span>{formatPercent(row.salesMix, 1)} mix - {formatNumber(row.orders)} pedidos</span>
+                </div>
+              </div>
+              <div className="sales-channel-metrics">
+                <span>
+                  <small>Ventas netas</small>
+                  <strong>{formatMoney(row.netRevenue, currency)}</strong>
+                </span>
+                <span>
+                  <small>Comisiones</small>
+                  <strong>{row.hasFeeData ? formatMoney(row.feeAmount, currency) : 'Pendiente'}</strong>
+                </span>
+                <span>
+                  <small>Neto post-fees</small>
+                  <strong>{row.hasFeeData ? formatMoney(row.netAfterFees, currency) : '-'}</strong>
+                </span>
+                <span>
+                  <small>Fee rate</small>
+                  <strong>{row.hasFeeData ? formatPercent(row.feeRate, 2) : '-'}</strong>
+                </span>
+              </div>
+              <p className={row.hasFeeData ? 'sales-channel-source' : 'sales-channel-source warning'}>
+                {row.hasFeeData ? `Fuente fee: ${providers}` : 'Sin fee API aun para este canal'}
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -405,7 +540,7 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
         <strong>Sincronización</strong>
         <span className={failedCount ? 'sales-sync-pill warning' : 'sales-sync-pill ok'}>{statusLabel}</span>
         {lastSyncAt > 0 && <span className="sales-sync-muted">último run {formatRelative(new Date(lastSyncAt).toISOString())}</span>}
-        <span className="sales-sync-muted">{formatNumber(totalImported)} pedidos importados</span>
+        <span className="sales-sync-muted">{formatNumber(totalImported)} registros importados</span>
       </div>
       <button
         className="sales-sync-info-button"
@@ -432,7 +567,7 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
                     {ok ? 'OK' : failed ? 'Error' : 'Sin info'}
                   </span>
                   {s.lastSyncRunAt && <span>último run {formatRelative(s.lastSyncRunAt)}</span>}
-                  <span>{formatNumber(s.ordersImported)} pedidos importados</span>
+                  <span>{formatNumber(s.ordersImported)} registros importados</span>
                   {failed && s.lastSyncError && <span className="sales-sync-error">{s.lastSyncError}</span>}
                 </div>
               );
@@ -488,7 +623,6 @@ export function SalesClient() {
   }, [load, period, platform, rangeStart, rangeEnd]);
 
   const currency = data?.kpis.currency ?? 'EUR';
-  const totalByPlatformRevenue = data?.byPlatform.reduce((s, p) => s + p.revenue, 0) ?? 0;
   const weekPresets = buildMonthWeekPresets(weekPresetMonth);
   const chartGranularity = data?.chartGranularity ?? 'day';
   const chartPeriodLabel = chartGranularity === 'month' ? 'mes' : 'día';
@@ -673,26 +807,11 @@ export function SalesClient() {
               </section>
             </div>
 
-            <section className="db-section panel">
-              <h2 className="db-section-title">Por plataforma</h2>
-              {data.byPlatform.length ? (
-                <div style={{ display: 'grid', gap: 8 }}>
-                  {data.byPlatform.map((p) => {
-                    const pct = totalByPlatformRevenue > 0 ? Math.round((p.revenue / totalByPlatformRevenue) * 100) : 0;
-                    return (
-                      <PercentBar
-                        key={p.platform}
-                        label={`${formatPlatformName(p.platform)} · ${formatNumber(p.orders)} pedidos`}
-                        value={pct}
-                        hint={`${formatMoney(p.revenue, currency)} · ${pct}%`}
-                      />
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="empty-state">Sin ventas en el periodo.</div>
-              )}
-            </section>
+            <ChannelFinancePanel
+              rows={data.byPlatformFinancial}
+              financeKpis={data.financeKpis}
+              currency={currency}
+            />
 
             <RawOrdersSection
               platform={platform}

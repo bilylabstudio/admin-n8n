@@ -5,6 +5,7 @@ import {
   sinceForPeriod,
   isPeriod,
   resolveSalesDateRange,
+  type AggregateFinancialTransactionInput,
   type AggregateInput
 } from './sales';
 
@@ -17,6 +18,20 @@ function order(partial: Partial<AggregateInput> & { processedAt: Date }): Aggreg
     totalUnits: 1,
     currency: 'EUR',
     ...partial
+  };
+}
+
+function financialTransaction(
+  partial: Partial<AggregateFinancialTransactionInput> & { platform: string; feeAmount: number }
+): AggregateFinancialTransactionInput {
+  return {
+    platform: partial.platform,
+    provider: partial.provider || `${partial.platform}_provider`,
+    grossAmount: partial.grossAmount ?? 0,
+    feeAmount: partial.feeAmount,
+    netAmount: partial.netAmount ?? 0,
+    currency: partial.currency || 'EUR',
+    postedAt: partial.postedAt || new Date('2026-06-01T10:00:00.000Z')
   };
 }
 
@@ -180,6 +195,73 @@ describe('aggregate', () => {
     expect(byPlatform).toEqual([
       { platform: 'amazon', orders: 1, revenue: 500 },
       { platform: 'shopify', orders: 2, revenue: 150 }
+    ]);
+  });
+
+  it('builds channel mix and net after API fees from financial transactions', () => {
+    const orders: AggregateInput[] = [
+      order({
+        platform: 'shopify',
+        processedAt: new Date('2026-06-01T10:00:00Z'),
+        totalPrice: 100 as never,
+        totalRefunded: 20 as never
+      }),
+      order({
+        platform: 'amazon',
+        processedAt: new Date('2026-06-01T11:00:00Z'),
+        totalPrice: 50 as never
+      })
+    ];
+
+    const result = aggregate(orders, {
+      financialTransactions: [
+        financialTransaction({
+          platform: 'shopify',
+          provider: 'shopify_payments',
+          feeAmount: 3
+        }),
+        financialTransaction({
+          platform: 'amazon',
+          provider: 'amazon_finances',
+          feeAmount: 7
+        })
+      ]
+    });
+
+    expect(result.financeKpis).toEqual({
+      totalFees: 10,
+      feeRate: 7.69,
+      netAfterFees: 120,
+      coveredRevenue: 130,
+      coverageRate: 100
+    });
+    expect(result.byPlatformFinancial).toEqual([
+      {
+        platform: 'shopify',
+        orders: 1,
+        grossRevenue: 100,
+        refundedRevenue: 20,
+        netRevenue: 80,
+        salesMix: 61.54,
+        feeAmount: 3,
+        feeRate: 3.75,
+        netAfterFees: 77,
+        hasFeeData: true,
+        feeProviders: ['shopify_payments']
+      },
+      {
+        platform: 'amazon',
+        orders: 1,
+        grossRevenue: 50,
+        refundedRevenue: 0,
+        netRevenue: 50,
+        salesMix: 38.46,
+        feeAmount: 7,
+        feeRate: 14,
+        netAfterFees: 43,
+        hasFeeData: true,
+        feeProviders: ['amazon_finances']
+      }
     ]);
   });
 

@@ -15,6 +15,28 @@ export type SalesKpis = {
   currency: string;
 };
 
+export type SalesFinancialKpis = {
+  totalFees: number;
+  feeRate: number;
+  netAfterFees: number;
+  coveredRevenue: number;
+  coverageRate: number;
+};
+
+export type SalesPlatformFinancialBreakdown = {
+  platform: string;
+  orders: number;
+  grossRevenue: number;
+  refundedRevenue: number;
+  netRevenue: number;
+  salesMix: number;
+  feeAmount: number;
+  feeRate: number;
+  netAfterFees: number;
+  hasFeeData: boolean;
+  feeProviders: string[];
+};
+
 export type SalesFinancialStatusBreakdown = {
   status: string;
   orders: number;
@@ -43,8 +65,10 @@ export type SalesResponse = {
   chartGranularity: ChartGranularity;
   syncState: SyncStateView[];
   kpis: SalesKpis;
+  financeKpis: SalesFinancialKpis;
   byDay: Array<{ date: string; orders: number; revenue: number; units: number }>;
   byPlatform: Array<{ platform: string; orders: number; revenue: number }>;
+  byPlatformFinancial: SalesPlatformFinancialBreakdown[];
   byFinancialStatus: SalesFinancialStatusBreakdown[];
 };
 
@@ -53,10 +77,21 @@ export type AggregateInput = Pick<
   'platform' | 'processedAt' | 'financialStatus' | 'totalPrice' | 'totalRefunded' | 'totalUnits' | 'currency'
 >;
 
+export type AggregateFinancialTransactionInput = {
+  platform: string;
+  provider: string;
+  grossAmount: unknown;
+  feeAmount: unknown;
+  netAmount: unknown;
+  currency: string;
+  postedAt: Date;
+};
+
 export type AggregateOptions = {
   since?: Date;
   until?: Date;
   granularity?: ChartGranularity;
+  financialTransactions?: AggregateFinancialTransactionInput[];
 };
 
 export type ChartGranularity = 'day' | 'month';
@@ -134,11 +169,14 @@ export function resolveSalesDateRange(input: {
 
 export function aggregate(orders: AggregateInput[], options: AggregateOptions = {}): {
   kpis: SalesKpis;
+  financeKpis: SalesFinancialKpis;
   byDay: SalesResponse['byDay'];
   byPlatform: SalesResponse['byPlatform'];
+  byPlatformFinancial: SalesResponse['byPlatformFinancial'];
   byFinancialStatus: SalesResponse['byFinancialStatus'];
 } {
   const totalOrders = orders.length;
+  const financialTransactions = options.financialTransactions ?? [];
 
   const grossRevenue = sum(orders, (o) => toNumber(o.totalPrice));
   const totalRefunded = sum(orders, (o) => toNumber(o.totalRefunded));
@@ -186,6 +224,16 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
     .sort(([, a], [, b]) => b.revenue - a.revenue)
     .map(([platform, v]) => ({ platform, orders: v.orders, revenue: round2(v.revenue) }));
 
+  const byPlatformFinancial = aggregatePlatformFinancials(orders, financialTransactions);
+  const totalFees = sum(financialTransactions, (transaction) => toNumber(transaction.feeAmount));
+  const netAfterFees = netRevenue - totalFees;
+  const coveredRevenue = sum(
+    byPlatformFinancial.filter((row) => row.hasFeeData),
+    (row) => row.netRevenue
+  );
+  const coverageRate = netRevenue ? (coveredRevenue / netRevenue) * 100 : 0;
+  const feeRate = netRevenue ? (totalFees / netRevenue) * 100 : 0;
+
   const byFinancialStatusMap = new Map<string, SalesFinancialStatusBreakdown>();
   for (const o of orders) {
     const status = normalizeFinancialStatus(o.financialStatus);
@@ -227,10 +275,83 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
       aov: round2(aov),
       currency
     },
+    financeKpis: {
+      totalFees: round2(totalFees),
+      feeRate: round2(feeRate),
+      netAfterFees: round2(netAfterFees),
+      coveredRevenue: round2(coveredRevenue),
+      coverageRate: round2(coverageRate)
+    },
     byDay,
     byPlatform,
+    byPlatformFinancial,
     byFinancialStatus
   };
+}
+
+function aggregatePlatformFinancials(
+  orders: AggregateInput[],
+  financialTransactions: AggregateFinancialTransactionInput[]
+): SalesPlatformFinancialBreakdown[] {
+  const salesByPlatform = new Map<
+    string,
+    { orders: number; grossRevenue: number; refundedRevenue: number; netRevenue: number }
+  >();
+
+  for (const order of orders) {
+    const grossRevenue = toNumber(order.totalPrice);
+    const refundedRevenue = toNumber(order.totalRefunded);
+    const current = salesByPlatform.get(order.platform) || {
+      orders: 0,
+      grossRevenue: 0,
+      refundedRevenue: 0,
+      netRevenue: 0
+    };
+    current.orders += 1;
+    current.grossRevenue += grossRevenue;
+    current.refundedRevenue += refundedRevenue;
+    current.netRevenue += grossRevenue - refundedRevenue;
+    salesByPlatform.set(order.platform, current);
+  }
+
+  const feesByPlatform = new Map<
+    string,
+    { feeAmount: number; transactions: number; providers: Set<string> }
+  >();
+
+  for (const transaction of financialTransactions) {
+    const current = feesByPlatform.get(transaction.platform) || {
+      feeAmount: 0,
+      transactions: 0,
+      providers: new Set<string>()
+    };
+    current.feeAmount += toNumber(transaction.feeAmount);
+    current.transactions += 1;
+    current.providers.add(transaction.provider);
+    feesByPlatform.set(transaction.platform, current);
+  }
+
+  const totalNetRevenue = sum([...salesByPlatform.values()], (row) => row.netRevenue);
+
+  return [...salesByPlatform.entries()]
+    .sort(([, a], [, b]) => b.netRevenue - a.netRevenue)
+    .map(([platform, sales]) => {
+      const feeStats = feesByPlatform.get(platform);
+      const feeAmount = feeStats?.feeAmount ?? 0;
+      return {
+        platform,
+        orders: sales.orders,
+        grossRevenue: round2(sales.grossRevenue),
+        refundedRevenue: round2(sales.refundedRevenue),
+        netRevenue: round2(sales.netRevenue),
+        salesMix: round2(totalNetRevenue ? (sales.netRevenue / totalNetRevenue) * 100 : 0),
+        feeAmount: round2(feeAmount),
+        feeRate: round2(sales.netRevenue ? (feeAmount / sales.netRevenue) * 100 : 0),
+        netAfterFees: round2(sales.netRevenue - feeAmount),
+        hasFeeData: Boolean(feeStats?.transactions),
+        feeProviders: [...(feeStats?.providers ?? new Set<string>())].sort()
+      };
+    });
 }
 
 export function chartGranularityForRange(since: Date, until: Date): ChartGranularity {

@@ -275,6 +275,32 @@ model PlatformOrder {
   @@index([customerEmail, processedAt])
 }
 
+model PlatformFinancialTransaction {
+  id                    String   @id @default(cuid())
+  platform              String
+  provider              String
+  externalTransactionId String
+  externalOrderId       String?
+  orderNumber           String?
+  currency              String
+
+  grossAmount           Decimal  @db.Decimal(12, 2)
+  feeAmount             Decimal  @db.Decimal(12, 2)
+  netAmount             Decimal  @db.Decimal(12, 2)
+
+  transactionType       String?
+  transactionStatus     String?
+  postedAt              DateTime
+
+  rawJson               Json?
+  syncedAt              DateTime @default(now())
+
+  @@unique([provider, externalTransactionId])
+  @@index([platform, postedAt])
+  @@index([provider, postedAt])
+  @@index([externalOrderId])
+}
+
 model PlatformSyncState {
   id             String    @id @default(cuid())
   platform       String    @unique

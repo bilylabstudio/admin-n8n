@@ -26,7 +26,7 @@ export async function GET(request: Request) {
     ...(platformParam !== 'all' ? { platform: platformParam } : {})
   };
 
-  const [orders, syncState] = await Promise.all([
+  const [orders, financialTransactions, syncState] = await Promise.all([
     db.platformOrder.findMany({
       where,
       select: {
@@ -39,14 +39,30 @@ export async function GET(request: Request) {
         currency: true
       }
     }),
+    db.platformFinancialTransaction.findMany({
+      where: {
+        postedAt: { gte: range.since, lte: range.until },
+        ...(platformParam !== 'all' ? { platform: platformParam } : {})
+      },
+      select: {
+        platform: true,
+        provider: true,
+        grossAmount: true,
+        feeAmount: true,
+        netAmount: true,
+        currency: true,
+        postedAt: true
+      }
+    }),
     db.platformSyncState.findMany()
   ]);
 
   const chartGranularity = chartGranularityForRange(range.since, range.until);
-  const { kpis, byDay, byPlatform, byFinancialStatus } = aggregate(orders, {
+  const { kpis, financeKpis, byDay, byPlatform, byPlatformFinancial, byFinancialStatus } = aggregate(orders, {
     since: range.since,
     until: range.until,
-    granularity: chartGranularity
+    granularity: chartGranularity,
+    financialTransactions
   });
 
   return Response.json({
@@ -60,8 +76,10 @@ export async function GET(request: Request) {
     chartGranularity,
     syncState: viewSyncState(syncState),
     kpis,
+    financeKpis,
     byDay,
     byPlatform,
+    byPlatformFinancial,
     byFinancialStatus
   });
 }
