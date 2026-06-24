@@ -2106,6 +2106,7 @@ button {
   justify-content: center;
   gap: clamp(4px, 1vw, 10px);
   min-width: 0;
+  overflow: hidden;
   padding: 17px 0 23px;
   background:
     linear-gradient(to bottom, rgba(46, 42, 57, 0.08) 1px, transparent 1px) 0 17px / 100% 50% no-repeat,
@@ -2125,11 +2126,24 @@ button {
   gap: 4px;
 }
 
+.sales-chart-dense .sales-chart-plot {
+  gap: clamp(1px, 0.4vw, 4px);
+}
+
+.sales-chart-dense .sales-chart-col {
+  max-width: none;
+  min-width: 0;
+}
+
 .sales-chart-value {
+  display: block;
   align-self: start;
   color: var(--ink-soft);
   font-size: 10px;
   font-weight: 700;
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 

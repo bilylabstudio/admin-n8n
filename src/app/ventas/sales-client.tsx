@@ -9,6 +9,7 @@ import {
   monthInputFromDate,
   type PresetPeriod
 } from '@/lib/sales-periods';
+import { isDenseSalesChart, shouldShowSalesChartValueLabel } from '@/lib/sales-chart';
 
 type Period = PresetPeriod | 'custom';
 type Platform = 'all' | 'shopify' | 'amazon' | 'tiktok_shop';
@@ -178,6 +179,7 @@ function SalesBarChart({
   const nonZeroValues = values.filter((value) => value > 0);
   const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   const labelEvery = Math.max(1, Math.ceil(data.length / 8));
+  const chartClassName = isDenseSalesChart(data.length) ? 'sales-chart sales-chart-dense' : 'sales-chart';
   const formatValue = (value: number) => (kind === 'money' ? formatCompactMoney(value, currency) : formatCompactNumber(value));
   const formatFullValue = (value: number) => (kind === 'money' ? formatMoney(value, currency) : `${formatNumber(value)} pedidos`);
   const activePeriodLabel =
@@ -190,7 +192,7 @@ function SalesBarChart({
         : 'dias con pedidos';
 
   return (
-    <div className="sales-chart">
+    <div className={chartClassName}>
       <div className="sales-chart-scale" aria-hidden="true">
         <span>{formatValue(actualMax)}</span>
         <span>{formatValue(Math.round(actualMax / 2))}</span>
@@ -200,7 +202,12 @@ function SalesBarChart({
         {data.map((d, i) => {
           const value = values[i];
           const pct = Math.round((value / scaleMax) * 100);
-          const showLabel = value > 0 && (data.length <= 14 || pct >= 24);
+          const showLabel = shouldShowSalesChartValueLabel({
+            dataLength: data.length,
+            index: i,
+            value,
+            percent: pct
+          });
           return (
             <div key={d.date} className="sales-chart-col">
               <span className={showLabel ? 'sales-chart-value' : 'sales-chart-value hidden'}>

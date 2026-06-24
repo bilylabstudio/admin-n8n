@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build",
     "start": "next start",
-    "test": "vitest run --environment node src/lib/status.test.ts src/lib/dashboard-quality.test.ts src/lib/auth.test.ts src/lib/forms.test.ts src/lib/form-uploads.test.ts src/lib/return-form-fields.test.ts src/lib/amazon-orders.test.ts src/lib/tiktok-shop-orders.test.ts src/lib/sent-export.test.ts src/app/api/tickets/export/sent/route.test.ts src/app/api/tiktok/callback/route.test.ts src/lib/sales-periods.test.ts src/lib/sales.test.ts src/lib/tickets.test.ts src/lib/bot-knowledge.test.ts src/lib/webmail-sync.test.ts src/lib/ticket-tags.test.ts src/lib/thread-messages.test.ts src/lib/customer-profile.test.ts src/lib/customer-profile-view.test.ts",
+    "test": "vitest run --environment node src/lib/status.test.ts src/lib/dashboard-quality.test.ts src/lib/auth.test.ts src/lib/forms.test.ts src/lib/form-uploads.test.ts src/lib/return-form-fields.test.ts src/lib/amazon-orders.test.ts src/lib/tiktok-shop-orders.test.ts src/lib/sent-export.test.ts src/app/api/tickets/export/sent/route.test.ts src/app/api/tiktok/callback/route.test.ts src/lib/sales-periods.test.ts src/lib/sales.test.ts src/lib/sales-chart.test.ts src/lib/tickets.test.ts src/lib/bot-knowledge.test.ts src/lib/webmail-sync.test.ts src/lib/ticket-tags.test.ts src/lib/thread-messages.test.ts src/lib/customer-profile.test.ts src/lib/customer-profile-view.test.ts",
     "cleanup:expired-forms": "tsx scripts/cleanup-expired-forms.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
