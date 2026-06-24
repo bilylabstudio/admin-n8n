@@ -57,7 +57,7 @@ type SalesData = {
 };
 
 const POLL_MS = 60_000;
-const SYNC_STATUS_COLLAPSED_STORAGE_KEY = 'vgummies:sales-sync-status-collapsed';
+const SYNC_STATUS_DETAILS_OPEN_STORAGE_KEY = 'vgummies:sales-sync-status-details-open';
 const PERIODS: { id: PresetPeriod; label: string }[] = [
   { id: 'ytd', label: 'Este año' },
   { id: '7d', label: '7 días' },
@@ -366,26 +366,32 @@ function AmazonStatusBreakdown({
 }
 
 function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const okCount = states.filter((s) => s.lastSyncStatus === 'ok').length;
   const failedCount = states.filter((s) => s.lastSyncStatus === 'failed').length;
-  const statusSummary = states.length
-    ? `${okCount} OK${failedCount ? `, ${failedCount} error` : ''}`
+  const totalImported = states.reduce((sum, state) => sum + state.ordersImported, 0);
+  const lastSyncAt = states
+    .map((state) => (state.lastSyncRunAt ? new Date(state.lastSyncRunAt).getTime() : 0))
+    .reduce((latest, current) => Math.max(latest, current), 0);
+  const statusLabel = states.length
+    ? failedCount
+      ? `${failedCount} con error`
+      : `${okCount}/${states.length} fuentes OK`
     : 'Sin ejecuciones';
 
   useEffect(() => {
     try {
-      setCollapsed(window.localStorage.getItem(SYNC_STATUS_COLLAPSED_STORAGE_KEY) === '1');
+      setDetailsOpen(window.localStorage.getItem(SYNC_STATUS_DETAILS_OPEN_STORAGE_KEY) === '1');
     } catch {
-      setCollapsed(false);
+      setDetailsOpen(false);
     }
   }, []);
 
-  function toggleCollapsed() {
-    setCollapsed((current) => {
+  function toggleDetails() {
+    setDetailsOpen((current) => {
       const next = !current;
       try {
-        window.localStorage.setItem(SYNC_STATUS_COLLAPSED_STORAGE_KEY, next ? '1' : '0');
+        window.localStorage.setItem(SYNC_STATUS_DETAILS_OPEN_STORAGE_KEY, next ? '1' : '0');
       } catch {
         // Ignore storage errors; the panel still toggles for the current session.
       }
@@ -394,41 +400,40 @@ function SyncStatusBanner({ states }: { states: SyncStateView[] }) {
   }
 
   return (
-    <section className="db-section panel" style={{ padding: collapsed ? '10px 14px' : 14 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          <strong>Estado de sincronización</strong>
-          <span style={{ color: 'var(--ink-soft)', fontSize: 13 }}>{statusSummary}</span>
-        </div>
-        <button
-          className="ghost-button"
-          type="button"
-          onClick={toggleCollapsed}
-          aria-expanded={!collapsed}
-          aria-controls="sales-sync-status-details"
-        >
-          {collapsed ? 'Mostrar' : 'Ocultar'}
-        </button>
+    <section className="sales-sync-card" aria-label="Estado de sincronización">
+      <div className="sales-sync-summary">
+        <strong>Sincronización</strong>
+        <span className={failedCount ? 'sales-sync-pill warning' : 'sales-sync-pill ok'}>{statusLabel}</span>
+        {lastSyncAt > 0 && <span className="sales-sync-muted">último run {formatRelative(new Date(lastSyncAt).toISOString())}</span>}
+        <span className="sales-sync-muted">{formatNumber(totalImported)} pedidos importados</span>
       </div>
-      {!collapsed && (
-        <div id="sales-sync-status-details" style={{ display: 'grid', gap: 6, marginTop: 10 }}>
+      <button
+        className="sales-sync-info-button"
+        type="button"
+        onClick={toggleDetails}
+        aria-expanded={detailsOpen}
+        aria-controls="sales-sync-status-details"
+        title={detailsOpen ? 'Ocultar detalle de sincronización' : 'Ver detalle de sincronización'}
+      >
+        i
+      </button>
+      {detailsOpen && (
+        <div id="sales-sync-status-details" className="sales-sync-details">
           {!states.length ? (
-            <p style={{ margin: 0 }}>Aún no se ha ejecutado ningún sync.</p>
+            <p className="sales-sync-empty">Aún no se ha ejecutado ningún sync.</p>
           ) : (
             states.map((s) => {
               const ok = s.lastSyncStatus === 'ok';
               const failed = s.lastSyncStatus === 'failed';
               return (
-                <div key={s.platform} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <div key={s.platform} className="sales-sync-row">
                   <strong>{formatPlatformName(s.platform)}</strong>
-                  <span style={{ color: ok ? 'var(--gummy-teal)' : failed ? 'var(--error-red)' : 'var(--ink-soft)' }}>
-                    {ok ? '✓ OK' : failed ? '✕ Error' : '— Sin info'}
+                  <span className={ok ? 'sales-sync-status ok' : failed ? 'sales-sync-status error' : 'sales-sync-status muted'}>
+                    {ok ? 'OK' : failed ? 'Error' : 'Sin info'}
                   </span>
-                  {s.lastSyncRunAt && <span style={{ color: 'var(--ink-soft)' }}>último run {formatRelative(s.lastSyncRunAt)}</span>}
-                  <span style={{ color: 'var(--ink-soft)' }}>{formatNumber(s.ordersImported)} pedidos importados</span>
-                  {failed && s.lastSyncError && (
-                    <span style={{ color: 'var(--error-red)', flexBasis: '100%' }}>{s.lastSyncError}</span>
-                  )}
+                  {s.lastSyncRunAt && <span>último run {formatRelative(s.lastSyncRunAt)}</span>}
+                  <span>{formatNumber(s.ordersImported)} pedidos importados</span>
+                  {failed && s.lastSyncError && <span className="sales-sync-error">{s.lastSyncError}</span>}
                 </div>
               );
             })
