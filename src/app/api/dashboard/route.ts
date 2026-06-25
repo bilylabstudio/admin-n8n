@@ -233,7 +233,8 @@ export async function GET(request: Request) {
   const escalationRate =
     totalInPeriod > 0 ? Math.round((escalatedInPeriod / totalInPeriod) * 100) : 0;
   const sensitiveRate = percent(sensitiveCount, totalInPeriod);
-  const reasonDenominator = Math.max(labelingQuality.eligibleForRouting, 1);
+  const closedReasonTotal = rawReasons.reduce((sum, reason) => sum + reason._count.id, 0);
+  const reasonDenominator = Math.max(closedReasonTotal, 1);
   const reasonGroups = new Map<TemplateFamily, ReasonAccumulator>();
 
   for (const reason of rawReasons) {
@@ -243,16 +244,6 @@ export async function GET(request: Request) {
       label: metadata.label,
       count: reason._count.id,
       percentOfTotal: percent(reason._count.id, reasonDenominator)
-    });
-  }
-
-  if (labelingQuality.newUnlabeledCount > 0) {
-    const metadata = templateLabelFor(null);
-    addReason(reasonGroups, 'sin_etiqueta', {
-      id: null,
-      label: metadata.label,
-      count: labelingQuality.newUnlabeledCount,
-      percentOfTotal: percent(labelingQuality.newUnlabeledCount, reasonDenominator)
     });
   }
 

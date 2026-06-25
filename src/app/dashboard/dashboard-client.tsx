@@ -65,14 +65,6 @@ type QualityBySendDay = {
   avgEditIntensity: number;
 };
 
-type LabelingQuality = {
-  eligibleForRouting: number;
-  closedLabelCount: number;
-  newUnlabeledCount: number;
-  historicalUnclassifiedCount: number;
-  closedLabelRate: number;
-};
-
 type SentimentQuality = {
   eligibleForSentiment: number;
   sentimentAnalyzed: number;
@@ -90,13 +82,11 @@ type DashboardData = {
   topIntents: { intent: string; count: number }[];
   reasonsByFamily: ReasonByFamily[];
   routeSourceBreakdown: RouteSourceBreakdown[];
-  closedLabelRate: number;
   sentimentBreakdown: SentimentBreakdown[];
   sentimentCoverage: number;
   sentimentByFamily: SentimentByFamily[];
   sendQuality: SendQuality;
   qualityBySendDay: QualityBySendDay[];
-  labelingQuality: LabelingQuality;
   sentimentQuality: SentimentQuality;
   totalInPeriod: number;
   aiAccuracy: number;
@@ -421,35 +411,6 @@ export function DashboardClient() {
               ) : (
                 <div className="empty-state">Sin respuestas enviadas en este periodo.</div>
               )}
-            </section>
-
-            <section className="db-section">
-              <h2 className="db-section-title">Motivos y etiquetado</h2>
-              <div className="db-kpi-grid">
-                <KpiCard
-                  label="Etiqueta cerrada"
-                  value={`${data.labelingQuality.closedLabelRate}%`}
-                  sub={`${data.labelingQuality.closedLabelCount} de ${data.labelingQuality.eligibleForRouting} elegibles`}
-                  tone={data.labelingQuality.closedLabelRate >= 80 ? 'ok' : data.labelingQuality.closedLabelRate >= 50 ? 'warning' : 'error'}
-                />
-                <KpiCard
-                  label="Sentimiento analizado"
-                  value={`${data.sentimentQuality.sentimentCoverage}%`}
-                  sub={`${data.sentimentQuality.sentimentAnalyzed} de ${data.sentimentQuality.eligibleForSentiment} elegibles`}
-                  tone={data.sentimentQuality.sentimentCoverage >= 80 ? 'ok' : data.sentimentQuality.sentimentCoverage >= 50 ? 'warning' : 'error'}
-                />
-                <KpiCard
-                  label="Sin etiqueta nueva"
-                  value={data.labelingQuality.newUnlabeledCount}
-                  sub="requiere revisar router"
-                  tone={data.labelingQuality.newUnlabeledCount > 0 ? 'warning' : 'ok'}
-                />
-                <KpiCard
-                  label="Historico sin clasificar"
-                  value={data.labelingQuality.historicalUnclassifiedCount}
-                  sub="fuera del denominador"
-                />
-              </div>
             </section>
 
             <div className="db-two-col">

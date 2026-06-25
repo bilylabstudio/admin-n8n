@@ -1,5 +1,6 @@
 'use client';
 
+import type { ChangeEvent, FormEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildMonthWeekPresets,
@@ -848,6 +849,17 @@ type RawOrder = {
   externalUpdatedAt: string;
 };
 
+type RawOrdersResponse = {
+  ok: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+  count: number;
+  orders: RawOrder[];
+  error?: string;
+};
+
 function RawOrdersSection({
   platform,
   period,
@@ -864,30 +876,95 @@ function RawOrdersSection({
   expectedTotal: number;
 }) {
   const [orders, setOrders] = useState<RawOrder[] | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [query, setQuery] = useState('');
+  const [financialStatus, setFinancialStatus] = useState('');
+  const [channelFilter, setChannelFilter] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
+  const [meta, setMeta] = useState({
+    total: expectedTotal,
+    page: 1,
+    pageSize: 50,
+    totalPages: Math.max(1, Math.ceil(expectedTotal / 50)),
+    count: 0
+  });
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (nextPage = page, nextPageSize = pageSize) => {
     setLoading(true);
     setError('');
     try {
       const params = buildSalesQuery(period, platform, startDate, endDate);
-      params.set('limit', '2000');
+      params.set('page', String(nextPage));
+      params.set('pageSize', String(nextPageSize));
+      if (query.trim()) params.set('q', query.trim());
+      if (financialStatus) params.set('financialStatus', financialStatus);
+      if (channelFilter.trim()) params.set('channel', channelFilter.trim());
+      if (countryFilter.trim()) params.set('country', countryFilter.trim());
       const res = await fetch(`/api/sales/orders?${params.toString()}`, { cache: 'no-store' });
-      const json = await res.json();
+      const json = (await res.json()) as RawOrdersResponse;
       if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar.');
       setOrders(json.orders);
+      setPage(json.page);
+      setPageSize(json.pageSize);
+      setMeta({
+        total: json.total,
+        page: json.page,
+        pageSize: json.pageSize,
+        totalPages: json.totalPages,
+        count: json.count
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
     } finally {
       setLoading(false);
     }
-  }, [endDate, period, platform, startDate]);
+  }, [channelFilter, countryFilter, endDate, financialStatus, page, pageSize, period, platform, query, startDate]);
 
   useEffect(() => {
+    setIsOpen(false);
     setOrders(null);
-    void load();
-  }, [load]);
+    setPage(1);
+    setError('');
+    setMeta((current) => ({
+      ...current,
+      total: expectedTotal,
+      page: 1,
+      totalPages: Math.max(1, Math.ceil(expectedTotal / current.pageSize)),
+      count: 0
+    }));
+  }, [endDate, expectedTotal, period, platform, startDate]);
+
+  const openOrders = () => {
+    setIsOpen(true);
+    setPage(1);
+    void load(1, pageSize);
+  };
+
+  const applyFilters = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setPage(1);
+    void load(1, pageSize);
+  };
+
+  const changePageSize = (event: ChangeEvent<HTMLSelectElement>) => {
+    const nextPageSize = Number(event.target.value);
+    setPageSize(nextPageSize);
+    setPage(1);
+    void load(1, nextPageSize);
+  };
+
+  const goToPage = (nextPage: number) => {
+    const boundedPage = Math.max(1, Math.min(nextPage, meta.totalPages));
+    setPage(boundedPage);
+    void load(boundedPage, pageSize);
+  };
+
+  const visibleFrom = orders && orders.length > 0 ? (meta.page - 1) * meta.pageSize + 1 : 0;
+  const visibleTo = orders && orders.length > 0 ? visibleFrom + orders.length - 1 : 0;
 
   return (
     <section className="db-section panel">
@@ -895,16 +972,73 @@ function RawOrdersSection({
         <div>
           <h2 className="db-section-title" style={{ margin: 0 }}>Pedidos del periodo</h2>
           <p className="sales-orders-meta">
-            {orders ? `${formatNumber(orders.length)} de ${formatNumber(expectedTotal)} pedidos` : `${formatNumber(expectedTotal)} pedidos`}
-            {expectedTotal > 2000 ? ' · tope visible 2.000' : ''}
+            {isOpen
+              ? `${formatNumber(visibleFrom)}-${formatNumber(visibleTo)} de ${formatNumber(meta.total)} pedidos`
+              : `${formatNumber(expectedTotal)} pedidos disponibles bajo demanda`}
           </p>
         </div>
-        <button className="ghost-button" type="button" onClick={() => void load()} disabled={loading}>
-          {loading ? 'Recargando...' : 'Recargar'}
-        </button>
+        {isOpen ? (
+          <button className="ghost-button" type="button" onClick={() => void load(page, pageSize)} disabled={loading}>
+            {loading ? 'Recargando...' : 'Recargar'}
+          </button>
+        ) : (
+          <button className="primary-action" type="button" onClick={openOrders} disabled={loading || expectedTotal === 0}>
+            {loading ? 'Cargando...' : 'Ver pedidos del periodo'}
+          </button>
+        )}
       </div>
 
+      {isOpen ? (
       <div style={{ marginTop: 12 }}>
+        <form className="sales-orders-filters" onSubmit={applyFilters}>
+          <label className="sales-date-field">
+            <span>Buscar</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Pedido o email"
+            />
+          </label>
+          <label className="sales-date-field">
+            <span>Estado financiero</span>
+            <select value={financialStatus} onChange={(event) => setFinancialStatus(event.target.value)}>
+              <option value="">Todos</option>
+              <option value="paid">Pagado</option>
+              <option value="pending">Pendiente</option>
+              <option value="partially_refunded">Reembolso parcial</option>
+              <option value="refunded">Reembolsado</option>
+              <option value="voided">Anulado</option>
+            </select>
+          </label>
+          <label className="sales-date-field">
+            <span>Canal</span>
+            <input
+              value={channelFilter}
+              onChange={(event) => setChannelFilter(event.target.value)}
+              placeholder="web, amazon..."
+            />
+          </label>
+          <label className="sales-date-field sales-country-field">
+            <span>Pais</span>
+            <input
+              value={countryFilter}
+              onChange={(event) => setCountryFilter(event.target.value.toUpperCase())}
+              maxLength={2}
+              placeholder="ES"
+            />
+          </label>
+          <label className="sales-date-field sales-page-size-field">
+            <span>Filas</span>
+            <select value={pageSize} onChange={changePageSize}>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
+          <button className="ghost-button" type="submit" disabled={loading}>
+            Aplicar filtros
+          </button>
+        </form>
+
         {error ? <p style={{ color: 'var(--error-red)' }}>{error}</p> : null}
         {loading && !orders ? <div className="empty-state" style={{ minHeight: 80 }}>Cargando pedidos...</div> : null}
         {orders && orders.length === 0 ? <div className="empty-state">Sin pedidos en el periodo.</div> : null}
@@ -952,12 +1086,23 @@ function RawOrdersSection({
                 </tbody>
               </table>
             </div>
-            <p className="sales-orders-meta">
-              Mas antiguo: {formatFullDate(orders[orders.length - 1].processedAt)} · Mas reciente: {formatFullDate(orders[0].processedAt)}
-            </p>
+            <div className="sales-orders-pagination">
+              <p className="sales-orders-meta">
+                Pagina {formatNumber(meta.page)} de {formatNumber(meta.totalPages)} - {formatNumber(meta.count)} filas cargadas
+              </p>
+              <div>
+                <button className="ghost-button" type="button" onClick={() => goToPage(meta.page - 1)} disabled={loading || meta.page <= 1}>
+                  Anterior
+                </button>
+                <button className="ghost-button" type="button" onClick={() => goToPage(meta.page + 1)} disabled={loading || meta.page >= meta.totalPages}>
+                  Siguiente
+                </button>
+              </div>
+            </div>
           </>
         ) : null}
       </div>
+      ) : null}
     </section>
   );
 }

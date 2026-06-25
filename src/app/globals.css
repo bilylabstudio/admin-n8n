@@ -2265,7 +2265,8 @@ button {
   text-transform: uppercase;
 }
 
-.sales-date-field input {
+.sales-date-field input,
+.sales-date-field select {
   min-height: 31px;
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
@@ -2276,7 +2277,8 @@ button {
   padding: 4px 8px;
 }
 
-.sales-date-field input:focus {
+.sales-date-field input:focus,
+.sales-date-field select:focus {
   outline: 2px solid rgba(99, 178, 183, 0.18);
   border-color: var(--gummy-teal);
 }
@@ -2291,6 +2293,19 @@ button {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.sales-orders-filters {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.sales-country-field,
+.sales-page-size-field {
+  min-width: 90px;
 }
 
 .sales-table-wrap {
@@ -2334,6 +2349,20 @@ button {
 
 .sales-orders-table .muted {
   color: var(--ink-muted);
+}
+
+.sales-orders-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.sales-orders-pagination > div {
+  display: flex;
+  gap: 8px;
 }
 
 /* ── Sales charts ── */
