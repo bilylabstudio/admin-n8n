@@ -301,6 +301,33 @@ model PlatformFinancialTransaction {
   @@index([externalOrderId])
 }
 
+model PlatformMarketingSpend {
+  id                    String   @id @default(cuid())
+  platform              String
+  provider              String
+  externalRecordId      String
+  reportType            String?
+  campaignId            String?
+  campaignName          String?
+  currency              String
+
+  spendAmount           Decimal  @db.Decimal(12, 2)
+  attributedSalesAmount Decimal  @db.Decimal(12, 2) @default(0)
+  purchases             Int      @default(0)
+  impressions           Int      @default(0)
+  clicks                Int      @default(0)
+
+  date                  DateTime
+
+  rawJson               Json?
+  syncedAt              DateTime @default(now())
+
+  @@unique([provider, externalRecordId])
+  @@index([platform, date])
+  @@index([provider, date])
+  @@index([campaignId, date])
+}
+
 model PlatformSyncState {
   id             String    @id @default(cuid())
   platform       String    @unique

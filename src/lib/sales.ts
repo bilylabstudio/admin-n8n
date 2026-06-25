@@ -19,6 +19,12 @@ export type SalesFinancialKpis = {
   totalFees: number;
   feeRate: number;
   netAfterFees: number;
+  totalAdSpend: number;
+  adSpendRate: number;
+  blendedRoas: number | null;
+  attributedAdSales: number;
+  attributedRoas: number | null;
+  netAfterFeesAndAds: number;
   coveredRevenue: number;
   coverageRate: number;
 };
@@ -33,8 +39,16 @@ export type SalesPlatformFinancialBreakdown = {
   feeAmount: number;
   feeRate: number;
   netAfterFees: number;
+  adSpend: number;
+  adSpendRate: number;
+  attributedAdSales: number;
+  attributedRoas: number | null;
+  mer: number | null;
+  netAfterFeesAndAds: number;
   hasFeeData: boolean;
   feeProviders: string[];
+  hasMarketingData: boolean;
+  marketingProviders: string[];
 };
 
 export type SalesFinancialStatusBreakdown = {
@@ -87,11 +101,21 @@ export type AggregateFinancialTransactionInput = {
   postedAt: Date;
 };
 
+export type AggregateMarketingSpendInput = {
+  platform: string;
+  provider: string;
+  spendAmount: unknown;
+  attributedSalesAmount: unknown;
+  currency: string;
+  date: Date;
+};
+
 export type AggregateOptions = {
   since?: Date;
   until?: Date;
   granularity?: ChartGranularity;
   financialTransactions?: AggregateFinancialTransactionInput[];
+  marketingSpend?: AggregateMarketingSpendInput[];
 };
 
 export type ChartGranularity = 'day' | 'month';
@@ -177,6 +201,7 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
 } {
   const totalOrders = orders.length;
   const financialTransactions = options.financialTransactions ?? [];
+  const marketingSpend = options.marketingSpend ?? [];
 
   const grossRevenue = sum(orders, (o) => toNumber(o.totalPrice));
   const totalRefunded = sum(orders, (o) => toNumber(o.totalRefunded));
@@ -224,15 +249,21 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
     .sort(([, a], [, b]) => b.revenue - a.revenue)
     .map(([platform, v]) => ({ platform, orders: v.orders, revenue: round2(v.revenue) }));
 
-  const byPlatformFinancial = aggregatePlatformFinancials(orders, financialTransactions);
+  const byPlatformFinancial = aggregatePlatformFinancials(orders, financialTransactions, marketingSpend);
   const totalFees = sum(financialTransactions, (transaction) => toNumber(transaction.feeAmount));
+  const totalAdSpend = sum(marketingSpend, (record) => toNumber(record.spendAmount));
+  const attributedAdSales = sum(marketingSpend, (record) => toNumber(record.attributedSalesAmount));
   const netAfterFees = netRevenue - totalFees;
+  const netAfterFeesAndAds = netAfterFees - totalAdSpend;
   const coveredRevenue = sum(
     byPlatformFinancial.filter((row) => row.hasFeeData),
     (row) => row.netRevenue
   );
   const coverageRate = netRevenue ? (coveredRevenue / netRevenue) * 100 : 0;
   const feeRate = netRevenue ? (totalFees / netRevenue) * 100 : 0;
+  const adSpendRate = netRevenue ? (totalAdSpend / netRevenue) * 100 : 0;
+  const blendedRoas = totalAdSpend ? netRevenue / totalAdSpend : null;
+  const attributedRoas = totalAdSpend ? attributedAdSales / totalAdSpend : null;
 
   const byFinancialStatusMap = new Map<string, SalesFinancialStatusBreakdown>();
   for (const o of orders) {
@@ -279,6 +310,12 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
       totalFees: round2(totalFees),
       feeRate: round2(feeRate),
       netAfterFees: round2(netAfterFees),
+      totalAdSpend: round2(totalAdSpend),
+      adSpendRate: round2(adSpendRate),
+      blendedRoas: roundNullable2(blendedRoas),
+      attributedAdSales: round2(attributedAdSales),
+      attributedRoas: roundNullable2(attributedRoas),
+      netAfterFeesAndAds: round2(netAfterFeesAndAds),
       coveredRevenue: round2(coveredRevenue),
       coverageRate: round2(coverageRate)
     },
@@ -291,7 +328,8 @@ export function aggregate(orders: AggregateInput[], options: AggregateOptions = 
 
 function aggregatePlatformFinancials(
   orders: AggregateInput[],
-  financialTransactions: AggregateFinancialTransactionInput[]
+  financialTransactions: AggregateFinancialTransactionInput[],
+  marketingSpend: AggregateMarketingSpendInput[]
 ): SalesPlatformFinancialBreakdown[] {
   const salesByPlatform = new Map<
     string,
@@ -331,6 +369,25 @@ function aggregatePlatformFinancials(
     feesByPlatform.set(transaction.platform, current);
   }
 
+  const marketingByPlatform = new Map<
+    string,
+    { spendAmount: number; attributedSalesAmount: number; records: number; providers: Set<string> }
+  >();
+
+  for (const spend of marketingSpend) {
+    const current = marketingByPlatform.get(spend.platform) || {
+      spendAmount: 0,
+      attributedSalesAmount: 0,
+      records: 0,
+      providers: new Set<string>()
+    };
+    current.spendAmount += toNumber(spend.spendAmount);
+    current.attributedSalesAmount += toNumber(spend.attributedSalesAmount);
+    current.records += 1;
+    current.providers.add(spend.provider);
+    marketingByPlatform.set(spend.platform, current);
+  }
+
   const totalNetRevenue = sum([...salesByPlatform.values()], (row) => row.netRevenue);
 
   return [...salesByPlatform.entries()]
@@ -338,6 +395,9 @@ function aggregatePlatformFinancials(
     .map(([platform, sales]) => {
       const feeStats = feesByPlatform.get(platform);
       const feeAmount = feeStats?.feeAmount ?? 0;
+      const marketingStats = marketingByPlatform.get(platform);
+      const adSpend = marketingStats?.spendAmount ?? 0;
+      const attributedAdSales = marketingStats?.attributedSalesAmount ?? 0;
       return {
         platform,
         orders: sales.orders,
@@ -348,8 +408,16 @@ function aggregatePlatformFinancials(
         feeAmount: round2(feeAmount),
         feeRate: round2(sales.netRevenue ? (feeAmount / sales.netRevenue) * 100 : 0),
         netAfterFees: round2(sales.netRevenue - feeAmount),
+        adSpend: round2(adSpend),
+        adSpendRate: round2(sales.netRevenue ? (adSpend / sales.netRevenue) * 100 : 0),
+        attributedAdSales: round2(attributedAdSales),
+        attributedRoas: roundNullable2(adSpend ? attributedAdSales / adSpend : null),
+        mer: roundNullable2(adSpend ? sales.netRevenue / adSpend : null),
+        netAfterFeesAndAds: round2(sales.netRevenue - feeAmount - adSpend),
         hasFeeData: Boolean(feeStats?.transactions),
-        feeProviders: [...(feeStats?.providers ?? new Set<string>())].sort()
+        feeProviders: [...(feeStats?.providers ?? new Set<string>())].sort(),
+        hasMarketingData: Boolean(marketingStats?.records),
+        marketingProviders: [...(marketingStats?.providers ?? new Set<string>())].sort()
       };
     });
 }
@@ -383,6 +451,10 @@ function toNumber(value: unknown): number {
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function roundNullable2(n: number | null): number | null {
+  return n === null ? null : round2(n);
 }
 
 function mostCommon<T>(arr: T[]): T | null {

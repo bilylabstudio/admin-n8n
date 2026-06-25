@@ -48,6 +48,12 @@ type SalesData = {
     totalFees: number;
     feeRate: number;
     netAfterFees: number;
+    totalAdSpend: number;
+    adSpendRate: number;
+    blendedRoas: number | null;
+    attributedAdSales: number;
+    attributedRoas: number | null;
+    netAfterFeesAndAds: number;
     coveredRevenue: number;
     coverageRate: number;
   };
@@ -63,8 +69,16 @@ type SalesData = {
     feeAmount: number;
     feeRate: number;
     netAfterFees: number;
+    adSpend: number;
+    adSpendRate: number;
+    attributedAdSales: number;
+    attributedRoas: number | null;
+    mer: number | null;
+    netAfterFeesAndAds: number;
     hasFeeData: boolean;
     feeProviders: string[];
+    hasMarketingData: boolean;
+    marketingProviders: string[];
   }[];
   byFinancialStatus: {
     status: string;
@@ -144,6 +158,7 @@ function formatPlatformName(value: string) {
 function formatProviderName(value: string) {
   const labels: Record<string, string> = {
     amazon_finances: 'Amazon Finances',
+    amazon_ads: 'Amazon Ads',
     shopify_payments: 'Shopify Payments'
   };
   return labels[value] || formatPlatformName(value);
@@ -155,6 +170,10 @@ function formatNumber(value: number, digits = 0) {
 
 function formatPercent(value: number, digits = 1) {
   return `${formatNumber(value, digits)}%`;
+}
+
+function formatMultiplier(value: number | null) {
+  return value === null ? '-' : `${formatNumber(value, 2)}x`;
 }
 
 function formatCompactNumber(value: number) {
@@ -328,7 +347,7 @@ function ChannelFinancePanel({
   if (!rows.length) {
     return (
       <section className="db-section panel">
-        <h2 className="db-section-title">Mix y comisiones por canal</h2>
+        <h2 className="db-section-title">Mix y contribucion API por canal</h2>
         <div className="empty-state">Sin ventas en el periodo.</div>
       </section>
     );
@@ -340,8 +359,8 @@ function ChannelFinancePanel({
     <section className="db-section panel sales-channel-panel">
       <div className="sales-channel-heading">
         <div>
-          <h2 className="db-section-title" style={{ margin: 0 }}>Mix y comisiones por canal</h2>
-          <p className="sales-channel-subtitle">Fees API: Amazon Finances y Shopify Payments.</p>
+          <h2 className="db-section-title" style={{ margin: 0 }}>Mix y contribucion API por canal</h2>
+          <p className="sales-channel-subtitle">Fees API: Amazon Finances y Shopify Payments. Ads API: Amazon Ads.</p>
         </div>
         <span className={hasFullFeeCoverage ? 'sales-channel-coverage ok' : 'sales-channel-coverage warning'}>
           {formatPercent(financeKpis.coverageRate, 0)} cobertura fees
@@ -353,6 +372,24 @@ function ChannelFinancePanel({
           label="Neto post-comisiones"
           value={formatMoney(financeKpis.netAfterFees, currency)}
           sub="ventas netas - fees API"
+        />
+        <KpiCard
+          label="Gasto Ads API"
+          value={formatMoney(financeKpis.totalAdSpend, currency)}
+          sub={`${formatPercent(financeKpis.adSpendRate, 2)} de ventas netas`}
+          tone={financeKpis.totalAdSpend > 0 ? undefined : 'warning'}
+        />
+        <KpiCard
+          label="MER / Blended ROAS"
+          value={formatMultiplier(financeKpis.blendedRoas)}
+          sub="ventas netas / Ads API"
+          tone={financeKpis.blendedRoas !== null && financeKpis.blendedRoas < 2 ? 'warning' : undefined}
+        />
+        <KpiCard
+          label="Neto API post-fees + Ads"
+          value={formatMoney(financeKpis.netAfterFeesAndAds, currency)}
+          sub="sin COGS ni logistica externa"
+          tone={financeKpis.netAfterFeesAndAds < 0 ? 'error' : undefined}
         />
         <KpiCard
           label="Comisiones API"
@@ -385,6 +422,11 @@ function ChannelFinancePanel({
       <div className="sales-channel-list">
         {rows.map((row, index) => {
           const providers = row.feeProviders.map(formatProviderName).join(', ');
+          const marketingProviders = row.marketingProviders.map(formatProviderName).join(', ');
+          const sourceNotes = [
+            row.hasFeeData ? `Fee: ${providers}` : 'Fee pendiente',
+            row.hasMarketingData ? `Ads: ${marketingProviders}` : row.platform === 'amazon' ? 'Ads pendiente' : 'Ads no conectado'
+          ];
           return (
             <div key={row.platform} className="sales-channel-row">
               <div className="sales-channel-name">
@@ -412,12 +454,24 @@ function ChannelFinancePanel({
                   <strong>{row.hasFeeData ? formatMoney(row.netAfterFees, currency) : '-'}</strong>
                 </span>
                 <span>
+                  <small>Ads API</small>
+                  <strong>{row.hasMarketingData ? formatMoney(row.adSpend, currency) : '-'}</strong>
+                </span>
+                <span>
+                  <small>MER canal</small>
+                  <strong>{formatMultiplier(row.mer)}</strong>
+                </span>
+                <span>
+                  <small>Neto API</small>
+                  <strong>{formatMoney(row.netAfterFeesAndAds, currency)}</strong>
+                </span>
+                <span>
                   <small>Fee rate</small>
                   <strong>{row.hasFeeData ? formatPercent(row.feeRate, 2) : '-'}</strong>
                 </span>
               </div>
-              <p className={row.hasFeeData ? 'sales-channel-source' : 'sales-channel-source warning'}>
-                {row.hasFeeData ? `Fuente fee: ${providers}` : 'Sin fee API aun para este canal'}
+              <p className={row.hasFeeData && (row.platform !== 'amazon' || row.hasMarketingData) ? 'sales-channel-source' : 'sales-channel-source warning'}>
+                {sourceNotes.join(' - ')}
               </p>
             </div>
           );

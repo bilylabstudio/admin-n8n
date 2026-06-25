@@ -6,7 +6,8 @@ import {
   isPeriod,
   resolveSalesDateRange,
   type AggregateFinancialTransactionInput,
-  type AggregateInput
+  type AggregateInput,
+  type AggregateMarketingSpendInput
 } from './sales';
 
 function order(partial: Partial<AggregateInput> & { processedAt: Date }): AggregateInput {
@@ -32,6 +33,19 @@ function financialTransaction(
     netAmount: partial.netAmount ?? 0,
     currency: partial.currency || 'EUR',
     postedAt: partial.postedAt || new Date('2026-06-01T10:00:00.000Z')
+  };
+}
+
+function marketingSpend(
+  partial: Partial<AggregateMarketingSpendInput> & { platform: string; spendAmount: number }
+): AggregateMarketingSpendInput {
+  return {
+    platform: partial.platform,
+    provider: partial.provider || `${partial.platform}_ads`,
+    spendAmount: partial.spendAmount,
+    attributedSalesAmount: partial.attributedSalesAmount ?? 0,
+    currency: partial.currency || 'EUR',
+    date: partial.date || new Date('2026-06-01T00:00:00.000Z')
   };
 }
 
@@ -232,6 +246,12 @@ describe('aggregate', () => {
       totalFees: 10,
       feeRate: 7.69,
       netAfterFees: 120,
+      totalAdSpend: 0,
+      adSpendRate: 0,
+      blendedRoas: null,
+      attributedAdSales: 0,
+      attributedRoas: null,
+      netAfterFeesAndAds: 120,
       coveredRevenue: 130,
       coverageRate: 100
     });
@@ -246,8 +266,16 @@ describe('aggregate', () => {
         feeAmount: 3,
         feeRate: 3.75,
         netAfterFees: 77,
+        adSpend: 0,
+        adSpendRate: 0,
+        attributedAdSales: 0,
+        attributedRoas: null,
+        mer: null,
+        netAfterFeesAndAds: 77,
         hasFeeData: true,
-        feeProviders: ['shopify_payments']
+        feeProviders: ['shopify_payments'],
+        hasMarketingData: false,
+        marketingProviders: []
       },
       {
         platform: 'amazon',
@@ -259,10 +287,78 @@ describe('aggregate', () => {
         feeAmount: 7,
         feeRate: 14,
         netAfterFees: 43,
+        adSpend: 0,
+        adSpendRate: 0,
+        attributedAdSales: 0,
+        attributedRoas: null,
+        mer: null,
+        netAfterFeesAndAds: 43,
         hasFeeData: true,
-        feeProviders: ['amazon_finances']
+        feeProviders: ['amazon_finances'],
+        hasMarketingData: false,
+        marketingProviders: []
       }
     ]);
+  });
+
+  it('adds API ad spend and computes MER / blended ROAS separately from fees', () => {
+    const orders: AggregateInput[] = [
+      order({
+        platform: 'shopify',
+        processedAt: new Date('2026-06-01T10:00:00Z'),
+        totalPrice: 100 as never
+      }),
+      order({
+        platform: 'amazon',
+        processedAt: new Date('2026-06-01T11:00:00Z'),
+        totalPrice: 200 as never
+      })
+    ];
+
+    const result = aggregate(orders, {
+      financialTransactions: [
+        financialTransaction({
+          platform: 'amazon',
+          provider: 'amazon_finances',
+          feeAmount: 20
+        })
+      ],
+      marketingSpend: [
+        marketingSpend({
+          platform: 'amazon',
+          provider: 'amazon_ads',
+          spendAmount: 40,
+          attributedSalesAmount: 120
+        })
+      ]
+    });
+
+    expect(result.financeKpis).toEqual({
+      totalFees: 20,
+      feeRate: 6.67,
+      netAfterFees: 280,
+      totalAdSpend: 40,
+      adSpendRate: 13.33,
+      blendedRoas: 7.5,
+      attributedAdSales: 120,
+      attributedRoas: 3,
+      netAfterFeesAndAds: 240,
+      coveredRevenue: 200,
+      coverageRate: 66.67
+    });
+    expect(result.byPlatformFinancial[0]).toMatchObject({
+      platform: 'amazon',
+      netRevenue: 200,
+      feeAmount: 20,
+      adSpend: 40,
+      adSpendRate: 20,
+      attributedAdSales: 120,
+      attributedRoas: 3,
+      mer: 5,
+      netAfterFeesAndAds: 140,
+      hasMarketingData: true,
+      marketingProviders: ['amazon_ads']
+    });
   });
 
   it('aggregates Shopify and Amazon together while preserving byPlatform totals', () => {
