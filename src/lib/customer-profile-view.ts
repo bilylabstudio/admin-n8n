@@ -8,6 +8,9 @@ export type CustomerOrderSummaryView = {
   financialStatus: string;
   fulfillmentStatus: string | null;
   cancelledAt: string | null;
+  channel?: string | null;
+  isSubscriptionOrder?: boolean;
+  subscriptionEvidence?: string[];
 };
 
 export type CustomerProfileView = {
@@ -42,8 +45,11 @@ export function formatCustomerOrderLine(order: CustomerOrderSummaryView) {
     formatOrderDate(order.processedAt),
     formatOrderAmount(order.totalPrice, order.currency),
     paymentStatusLabel(order.financialStatus),
-    fulfillmentStatusLabel(order)
-  ].join(' - ');
+    fulfillmentStatusLabel(order),
+    subscriptionStatusLabel(order)
+  ]
+    .filter(Boolean)
+    .join(' - ');
 }
 
 export function paymentStatusLabel(status: string | null | undefined) {
@@ -60,6 +66,10 @@ export function fulfillmentStatusLabel(order: {
   const key = String(order.fulfillmentStatus || '').trim().toLowerCase();
   if (!key) return 'sin envio';
   return FULFILLMENT_LABELS[key] || key.replace(/_/g, ' ');
+}
+
+export function subscriptionStatusLabel(order: { isSubscriptionOrder?: boolean }) {
+  return order.isSubscriptionOrder ? 'suscripcion' : '';
 }
 
 function formatOrderNumber(order: CustomerOrderSummaryView) {

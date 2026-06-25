@@ -4,6 +4,7 @@ import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { inboxGroups, isInboxGroup, statusesForGroup } from '@/lib/status';
 import { getTicketTags } from '@/lib/ticket-tags';
+import { routeSourceLabel, templateLabelFor } from '@/lib/template-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +81,10 @@ export async function GET(request: Request) {
       originalText: ticket.originalText,
       aiReply: ticket.aiReply,
       finalReply: ticket.finalReply,
+      routedTemplateId: ticket.routedTemplateId,
+      routeSource: ticket.routeSource,
+      templateLabel: ticket.routedTemplateId ? templateLabelFor(ticket.routedTemplateId) : null,
+      routeSourceLabel: ticket.routeSource ? routeSourceLabel(ticket.routeSource) : null,
       category: ticket.category,
       intent: ticket.intent,
       riskFlags: ticket.riskFlags,

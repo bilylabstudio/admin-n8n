@@ -31,6 +31,11 @@ type TicketTag = {
 
 type ActiveTagFilter = 'all' | TicketTag['id'];
 
+type TicketTemplateLabel = {
+  label: string;
+  family: string;
+};
+
 type Ticket = {
   id: string;
   customerEmail: string;
@@ -41,6 +46,10 @@ type Ticket = {
   originalText: string;
   aiReply: string;
   finalReply: string | null;
+  routedTemplateId: string | null;
+  routeSource: string | null;
+  templateLabel: TicketTemplateLabel | null;
+  routeSourceLabel: string | null;
   category: string | null;
   intent: string | null;
   riskFlags: string | null;
@@ -928,6 +937,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                         <span className="row-preview">{preview(ticket.originalText)}</span>
                         <span className="row-tags">
                           <TagBadges tags={ticket.tags} />
+                          {ticket.templateLabel ? <em>{ticket.templateLabel.label}</em> : null}
                           {ticket.category ? <em>{ticket.category}</em> : null}
                           {ticket.intent ? <em>{ticket.intent}</em> : null}
                           {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
@@ -1254,9 +1264,10 @@ function ConversationPane({
                   <p className="bubble-subject">{ticket.subject}</p>
                 ) : null}
                 <p className="bubble-text">{ticket.originalText}</p>
-                {ticket.tags.length || ticket.category || ticket.intent ? (
+                {ticket.tags.length || ticket.templateLabel || ticket.category || ticket.intent ? (
                   <div className="bubble-tags">
                     <TagBadges tags={ticket.tags} />
+                    {ticket.templateLabel ? <em>{ticket.templateLabel.label}</em> : null}
                     {ticket.category ? <em>{ticket.category}</em> : null}
                     {ticket.intent ? <em>{ticket.intent}</em> : null}
                   </div>
@@ -1401,6 +1412,8 @@ function ReviewPane({
 
       <div className="detail-strip compact-detail-strip">
         <span>{formatDate(ticket.receivedAt)}</span>
+        {ticket.templateLabel ? <span>{ticket.templateLabel.label}</span> : null}
+        {ticket.routeSourceLabel ? <span>{ticket.routeSourceLabel}</span> : null}
         {ticket.category ? <span>{ticket.category}</span> : null}
         {ticket.intent ? <span>{ticket.intent}</span> : null}
         <TagBadges tags={ticket.tags} />
@@ -1660,6 +1673,15 @@ function fixTicket(t: Ticket): Ticket {
     originalText: fixMojibake(t.originalText) || '',
     aiReply: fixMojibake(t.aiReply) || '',
     finalReply: fixMojibake(t.finalReply) || '',
+    routedTemplateId: t.routedTemplateId || null,
+    routeSource: t.routeSource || null,
+    templateLabel: t.templateLabel
+      ? {
+          label: fixMojibake(t.templateLabel.label) || t.templateLabel.label,
+          family: t.templateLabel.family
+        }
+      : null,
+    routeSourceLabel: fixMojibake(t.routeSourceLabel) || null,
     category: fixMojibake(t.category),
     intent: fixMojibake(t.intent),
     tags: t.tags || []
@@ -1691,7 +1713,12 @@ function fixCustomerProfile(profile?: CustomerProfileView | null): CustomerProfi
           currency: String(order.currency || 'EUR'),
           financialStatus: String(order.financialStatus || ''),
           fulfillmentStatus: order.fulfillmentStatus ? String(order.fulfillmentStatus) : null,
-          cancelledAt: order.cancelledAt ? String(order.cancelledAt) : null
+          cancelledAt: order.cancelledAt ? String(order.cancelledAt) : null,
+          channel: order.channel ? String(order.channel) : null,
+          isSubscriptionOrder: Boolean(order.isSubscriptionOrder),
+          subscriptionEvidence: Array.isArray(order.subscriptionEvidence)
+            ? order.subscriptionEvidence.map(String)
+            : []
         }))
       : []
   };

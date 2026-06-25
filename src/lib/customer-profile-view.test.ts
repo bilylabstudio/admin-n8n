@@ -53,6 +53,23 @@ describe('customer profile view helpers', () => {
     ).toBe('cancelado');
   });
 
+  it('marks subscription orders in the tooltip line', () => {
+    expect(
+      formatCustomerOrderLine({
+        id: 'order-sub',
+        platform: 'shopify',
+        orderNumber: '#50111',
+        processedAt: '2026-06-25T08:47:00.000Z',
+        totalPrice: '74.97',
+        currency: 'EUR',
+        financialStatus: 'paid',
+        fulfillmentStatus: null,
+        cancelledAt: null,
+        isSubscriptionOrder: true
+      })
+    ).toBe('#50111 - 25/06/2026 - 74,97 EUR - pagado - sin envio - suscripcion');
+  });
+
   it('translates common payment and fulfillment statuses', () => {
     expect(paymentStatusLabel('paid')).toBe('pagado');
     expect(paymentStatusLabel('pending')).toBe('pendiente');

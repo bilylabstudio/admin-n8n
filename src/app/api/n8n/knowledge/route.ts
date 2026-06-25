@@ -13,6 +13,8 @@ const knowledgeRequestSchema = z.object({
   message: z.string().optional().nullable(),
   current_message: z.string().optional().nullable(),
   order_number: z.string().optional().nullable(),
+  received_at: z.string().optional().nullable(),
+  reference_date: z.string().optional().nullable(),
   classification: z.record(z.unknown()).optional().nullable()
 });
 

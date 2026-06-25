@@ -12,6 +12,53 @@ vi.mock('./db', () => ({
   }
 }));
 
+const NO_RELEVANT_SUBSCRIPTION_CONTEXT = {
+  hasRelevantSubscriptionOrder: false,
+  state: 'not_generated_detected',
+  matchType: 'none',
+  generatedLookbackDays: 7,
+  receivedLookbackDays: 30,
+  latestSubscriptionOrder: null,
+  ignoredSubscriptionOrders: []
+};
+
+function shopifyOrder(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'order-1',
+    platform: 'shopify',
+    orderNumber: '#1001',
+    externalOrderId: '1001',
+    processedAt: new Date('2026-06-04T10:00:00.000Z'),
+    totalPrice: '49.90',
+    currency: 'EUR',
+    financialStatus: 'paid',
+    fulfillmentStatus: 'fulfilled',
+    cancelledAt: null,
+    channel: null,
+    rawJson: {},
+    isTest: false,
+    ...overrides
+  };
+}
+
+function expectedOrderSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'order-1',
+    platform: 'shopify',
+    orderNumber: '#1001',
+    processedAt: '2026-06-04T10:00:00.000Z',
+    totalPrice: '49.90',
+    currency: 'EUR',
+    financialStatus: 'paid',
+    fulfillmentStatus: 'fulfilled',
+    cancelledAt: null,
+    channel: null,
+    isSubscriptionOrder: false,
+    subscriptionEvidence: [],
+    ...overrides
+  };
+}
+
 describe('extractOrderNumberCandidates', () => {
   it('extracts hash-prefixed order numbers', async () => {
     const { extractOrderNumberCandidates } = await import('./customer-profile');
@@ -67,7 +114,8 @@ describe('getCustomerProfileByEmail', () => {
     await expect(getCustomerProfileByEmail('   ')).resolves.toEqual({
       email: '',
       orderCount: 0,
-      recentOrders: []
+      recentOrders: [],
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
     });
     expect(count).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
@@ -76,37 +124,13 @@ describe('getCustomerProfileByEmail', () => {
   it('normalizes email and returns recent orders', async () => {
     const { getCustomerProfileByEmail } = await import('./customer-profile');
     count.mockResolvedValue(6);
-    findMany.mockResolvedValue([
-      {
-        id: 'order-1',
-        platform: 'shopify',
-        orderNumber: '#1006',
-        externalOrderId: '1006',
-        processedAt: new Date('2026-06-04T10:00:00.000Z'),
-        totalPrice: '49.90',
-        currency: 'EUR',
-        financialStatus: 'paid',
-        fulfillmentStatus: 'fulfilled',
-        cancelledAt: null
-      }
-    ]);
+    findMany.mockResolvedValue([shopifyOrder({ id: 'order-1', orderNumber: '#1006', externalOrderId: '1006' })]);
 
     await expect(getCustomerProfileByEmail(' Lola@Example.COM ')).resolves.toEqual({
       email: 'lola@example.com',
       orderCount: 1,
-      recentOrders: [
-        {
-          id: 'order-1',
-          platform: 'shopify',
-          orderNumber: '#1006',
-          processedAt: '2026-06-04T10:00:00.000Z',
-          totalPrice: '49.90',
-          currency: 'EUR',
-          financialStatus: 'paid',
-          fulfillmentStatus: 'fulfilled',
-          cancelledAt: null
-        }
-      ]
+      recentOrders: [expectedOrderSummary({ id: 'order-1', orderNumber: '#1006' })],
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
     });
 
     expect(count).not.toHaveBeenCalled();
@@ -130,7 +154,10 @@ describe('getCustomerProfileByEmail', () => {
           currency: true,
           financialStatus: true,
           fulfillmentStatus: true,
-          cancelledAt: true
+          cancelledAt: true,
+          channel: true,
+          rawJson: true,
+          isTest: true
         }
       })
     );
@@ -142,18 +169,13 @@ describe('getCustomerProfileByEmail', () => {
     findMany
       .mockResolvedValueOnce([])
       .mockResolvedValueOnce([
-        {
+        shopifyOrder({
           id: 'order-by-number',
-          platform: 'shopify',
           orderNumber: '#45405',
           externalOrderId: 'gid-45405',
           processedAt: new Date('2026-06-05T09:00:00.000Z'),
-          totalPrice: '59.90',
-          currency: 'EUR',
-          financialStatus: 'paid',
-          fulfillmentStatus: 'fulfilled',
-          cancelledAt: null
-        }
+          totalPrice: '59.90'
+        })
       ]);
 
     await expect(
@@ -165,18 +187,14 @@ describe('getCustomerProfileByEmail', () => {
       email: 'ticket-email@example.com',
       orderCount: 1,
       recentOrders: [
-        {
+        expectedOrderSummary({
           id: 'order-by-number',
-          platform: 'shopify',
           orderNumber: '#45405',
           processedAt: '2026-06-05T09:00:00.000Z',
-          totalPrice: '59.90',
-          currency: 'EUR',
-          financialStatus: 'paid',
-          fulfillmentStatus: 'fulfilled',
-          cancelledAt: null
-        }
-      ]
+          totalPrice: '59.90'
+        })
+      ],
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
     });
 
     expect(findMany).toHaveBeenNthCalledWith(
@@ -195,32 +213,23 @@ describe('getCustomerProfileByEmail', () => {
   it('dedupes orders found by both email and number and prioritizes number matches', async () => {
     const { getCustomerProfile } = await import('./customer-profile');
     count.mockResolvedValue(2);
-    const shared = {
+    const shared = shopifyOrder({
       id: 'shared-order',
-      platform: 'shopify',
       orderNumber: '#45405',
       externalOrderId: '45405',
       processedAt: new Date('2026-06-05T09:00:00.000Z'),
-      totalPrice: '59.90',
-      currency: 'EUR',
-      financialStatus: 'paid',
-      fulfillmentStatus: 'fulfilled',
-      cancelledAt: null
-    };
+      totalPrice: '59.90'
+    });
     findMany
       .mockResolvedValueOnce([
-        {
+        shopifyOrder({
           id: 'email-order',
-          platform: 'shopify',
           orderNumber: '#1001',
           externalOrderId: '1001',
           processedAt: new Date('2026-06-01T09:00:00.000Z'),
           totalPrice: '29.90',
-          currency: 'EUR',
-          financialStatus: 'paid',
-          fulfillmentStatus: null,
-          cancelledAt: null
-        },
+          fulfillmentStatus: null
+        }),
         shared
       ])
       .mockResolvedValueOnce([shared]);
@@ -242,18 +251,16 @@ describe('getCustomerProfileByEmail', () => {
     count.mockResolvedValue(6);
     findMany
       .mockResolvedValueOnce(
-        Array.from({ length: 6 }, (_, index) => ({
-          id: `email-order-${index}`,
-          platform: 'shopify',
-          orderNumber: `#10${index}`,
-          externalOrderId: `10${index}`,
-          processedAt: new Date(`2026-06-0${Math.min(index + 1, 9)}T09:00:00.000Z`),
-          totalPrice: '10.00',
-          currency: 'EUR',
-          financialStatus: 'paid',
-          fulfillmentStatus: null,
-          cancelledAt: null
-        }))
+        Array.from({ length: 6 }, (_, index) =>
+          shopifyOrder({
+            id: `email-order-${index}`,
+            orderNumber: `#10${index}`,
+            externalOrderId: `10${index}`,
+            processedAt: new Date(`2026-06-0${Math.min(index + 1, 9)}T09:00:00.000Z`),
+            totalPrice: '10.00',
+            fulfillmentStatus: null
+          })
+        )
       )
       .mockResolvedValueOnce([]);
 
@@ -270,18 +277,15 @@ describe('getCustomerProfileByEmail', () => {
     const { getCustomerProfileByEmail } = await import('./customer-profile');
     count.mockResolvedValue(1);
     findMany.mockResolvedValue([
-      {
+      shopifyOrder({
         id: 'order-2',
-        platform: 'shopify',
         orderNumber: null,
         externalOrderId: '27215069513',
         processedAt: new Date('2026-06-02T08:30:00.000Z'),
         totalPrice: { toString: () => '29.95' },
-        currency: 'EUR',
         financialStatus: 'pending',
-        fulfillmentStatus: null,
-        cancelledAt: null
-      }
+        fulfillmentStatus: null
+      })
     ]);
 
     const profile = await getCustomerProfileByEmail('cliente@example.com');
@@ -297,7 +301,167 @@ describe('getCustomerProfileByEmail', () => {
     await expect(getCustomerProfileByEmail('cliente@example.com')).resolves.toEqual({
       email: 'cliente@example.com',
       orderCount: 0,
-      recentOrders: []
+      recentOrders: [],
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
     });
+  });
+
+  it('ignores an old Loop order when the customer only has an upcoming subscription notice', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'old-loop',
+        orderNumber: '#40001',
+        externalOrderId: '40001',
+        processedAt: new Date('2026-05-16T09:00:00.000Z'),
+        channel: 'Loop Subscriptions'
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Tu proximo pedido llega pronto', 'No quiero mas productos'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual({
+      ...NO_RELEVANT_SUBSCRIPTION_CONTEXT,
+      ignoredSubscriptionOrders: [
+        {
+          orderNumber: '#40001',
+          processedAt: '2026-05-16T09:00:00.000Z',
+          reason: 'too_old_for_current_message'
+        }
+      ]
+    });
+  });
+
+  it('uses the exact Loop order number even when the order is old', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        shopifyOrder({
+          id: 'exact-loop',
+          orderNumber: '#50111',
+          externalOrderId: '50111',
+          processedAt: new Date('2026-05-16T09:00:00.000Z'),
+          fulfillmentStatus: null,
+          channel: 'Loop Subscriptions'
+        })
+      ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Quiero anular el pedido #50111'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual(
+      expect.objectContaining({
+        hasRelevantSubscriptionOrder: true,
+        state: 'generated_not_shipped',
+        matchType: 'exact_order_number',
+        latestSubscriptionOrder: expect.objectContaining({
+          id: 'exact-loop',
+          orderNumber: '#50111',
+          isSubscriptionOrder: true,
+          subscriptionEvidence: ['channel_subscription']
+        })
+      })
+    );
+  });
+
+  it('uses the latest recent Loop order when there is no order number', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'recent-loop',
+        orderNumber: '#50112',
+        externalOrderId: '50112',
+        processedAt: new Date('2026-06-22T09:00:00.000Z'),
+        fulfillmentStatus: null,
+        channel: 'Loop Subscriptions'
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['No reconozco este pedido de suscripcion'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual(
+      expect.objectContaining({
+        hasRelevantSubscriptionOrder: true,
+        state: 'generated_not_shipped',
+        matchType: 'recent_generated',
+        latestSubscriptionOrder: expect.objectContaining({ id: 'recent-loop' })
+      })
+    );
+  });
+
+  it('allows a wider received/devolution window for an old Loop order', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'received-loop',
+        orderNumber: '#50113',
+        externalOrderId: '50113',
+        processedAt: new Date('2026-06-05T09:00:00.000Z'),
+        fulfillmentStatus: 'fulfilled',
+        channel: 'Loop Subscriptions'
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Ya lo he recibido y quiero devolverlo'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual(
+      expect.objectContaining({
+        hasRelevantSubscriptionOrder: true,
+        state: 'generated_processed',
+        matchType: 'received_window',
+        latestSubscriptionOrder: expect.objectContaining({ id: 'received-loop' })
+      })
+    );
+  });
+
+  it('marks charge claims without a relevant Loop order as unknown for safe review', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'old-loop-charge',
+        orderNumber: '#50114',
+        externalOrderId: '50114',
+        processedAt: new Date('2026-05-16T09:00:00.000Z'),
+        channel: 'Loop Subscriptions'
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Me han cobrado una suscripcion que no reconozco'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual(
+      expect.objectContaining({
+        hasRelevantSubscriptionOrder: false,
+        state: 'unknown_charge_no_order',
+        matchType: 'none',
+        latestSubscriptionOrder: null,
+        ignoredSubscriptionOrders: [
+          {
+            orderNumber: '#50114',
+            processedAt: '2026-05-16T09:00:00.000Z',
+            reason: 'too_old_for_current_message'
+          }
+        ]
+      })
+    );
   });
 });

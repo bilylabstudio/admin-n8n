@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { currentUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { getTicketTags } from '@/lib/ticket-tags';
+import { routeSourceLabel, templateLabelFor } from '@/lib/template-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,6 +40,10 @@ export async function GET(
       originalText: t.originalText,
       aiReply: t.aiReply,
       finalReply: t.finalReply,
+      routedTemplateId: t.routedTemplateId,
+      routeSource: t.routeSource,
+      templateLabel: t.routedTemplateId ? templateLabelFor(t.routedTemplateId) : null,
+      routeSourceLabel: t.routeSource ? routeSourceLabel(t.routeSource) : null,
       category: t.category,
       intent: t.intent,
       riskFlags: t.riskFlags,

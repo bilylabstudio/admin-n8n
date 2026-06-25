@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import {
   extractOrderNumberCandidates,
   getCustomerProfile,
-  type CustomerProfile
+  type SubscriptionOrderContext
 } from './customer-profile';
 import { db } from './db';
 
@@ -31,6 +31,8 @@ export type BotKnowledgeInput = {
   message?: string | null;
   current_message?: string | null;
   order_number?: string | null;
+  received_at?: string | null;
+  reference_date?: string | null;
   classification?: CaseClassification | null;
 };
 
@@ -47,7 +49,7 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
   const orderNumberCandidates = extractOrderNumberCandidates(texts);
 
   const [customerProfile, previousTickets, approvedResponseCandidates] = await Promise.all([
-    getCustomerProfile({ email, texts }),
+    getCustomerProfile({ email, texts, referenceDate: input.received_at || input.reference_date }),
     email ? findPreviousTickets(email, input.external_message_id) : Promise.resolve([]),
     findApprovedResponseCandidates(input)
   ]);
@@ -59,6 +61,9 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
     customer_profile: customerProfile,
     recent_orders: customerProfile.recentOrders,
     order_count: customerProfile.orderCount,
+    subscription_order_context: toKnowledgeSubscriptionOrderContext(
+      customerProfile.subscriptionOrderContext
+    ),
     previous_tickets: previousTickets,
     approved_response_candidates: approvedResponseCandidates,
     retrieval: {
@@ -68,6 +73,19 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
       used_email_lookup: Boolean(email),
       used_order_number_lookup: orderNumberCandidates.length > 0
     }
+  };
+}
+
+function toKnowledgeSubscriptionOrderContext(context: SubscriptionOrderContext) {
+  return {
+    has_relevant_subscription_order: context.hasRelevantSubscriptionOrder,
+    state: context.state,
+    subscription_order_state: context.state,
+    match_type: context.matchType,
+    generated_lookback_days: context.generatedLookbackDays,
+    received_lookback_days: context.receivedLookbackDays,
+    latest_subscription_order: context.latestSubscriptionOrder,
+    ignored_subscription_orders: context.ignoredSubscriptionOrders
   };
 }
 

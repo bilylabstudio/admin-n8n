@@ -31,6 +31,7 @@ export const SENTIMENT_LABELS: Record<SentimentValue, string> = {
 export const ROUTE_SOURCE_LABELS: Record<string, string> = {
   canonical_router: 'Router canonico',
   sub_specialist: 'Especialista suscripcion',
+  subscription_order_context: 'Contexto pedido suscripcion',
   approved_memory: 'Memoria aprobada',
   special_case: 'Caso especial',
   llm_draft: 'Borrador IA',
@@ -41,6 +42,24 @@ export const ROUTE_SOURCE_LABELS: Record<string, string> = {
 
 export const TEMPLATE_LABELS: Record<string, TemplateLabel> = {
   sub_baja_generica: { label: 'Como darse de baja', family: 'suscripcion' },
+  sub_explicacion_condiciones: {
+    label: 'Suscripcion generada: condiciones',
+    family: 'suscripcion'
+  },
+  sub_suscripcion_pedido_generado: {
+    label: 'Suscripcion: pedido generado',
+    family: 'suscripcion'
+  },
+  sub_suscripcion_pedido_no_generado: {
+    label: 'Suscripcion: pedido no generado',
+    family: 'suscripcion'
+  },
+  sub_reclama_devolucion_suscripcion: {
+    label: 'Reclama devolucion por suscripcion',
+    family: 'suscripcion'
+  },
+  sub_clienta_pesada: { label: 'Suscripcion insistente', family: 'suscripcion' },
+  sub_amenaza_denuncia: { label: 'Suscripcion amenaza denuncia', family: 'suscripcion' },
   sub_pedido_en_camino: { label: 'Pedido de suscripcion en camino', family: 'suscripcion' },
   sub_pedido_recibido_devolucion: {
     label: 'Suscripcion recibida y quiere devolver',
