@@ -356,3 +356,24 @@ model SupportApprovedResponse {
   @@index([status, family, subintent])
   @@map("support_approved_responses")
 }
+
+// Valores MANUALES del panel financiero estilo Excel: una celda por (mes, sub-periodo, concepto).
+model FinancialLedgerEntry {
+  id          String   @id @default(cuid())
+  month       String
+  periodLabel String
+  lineKey     String
+  amount      Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([month, periodLabel, lineKey])
+  @@index([month])
+}
+
+// Tasas configurables del panel financiero (comisiones y costes por unidad).
+model FinancialSetting {
+  key       String   @id
+  value     Decimal  @db.Decimal(12, 4)
+  updatedAt DateTime @updatedAt
+}

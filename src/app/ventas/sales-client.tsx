@@ -317,6 +317,235 @@ function KpiCard({
 
 const CHANNEL_MIX_COLORS = ['#63b2b7', '#334fb4', '#a891f6', '#7d5f00', '#5f596d'];
 
+type LedgerRowKind = 'auto' | 'computed' | 'manual' | 'total';
+
+type LedgerRow = {
+  key: string;
+  label: string;
+  kind: LedgerRowKind;
+  group: 'metric' | 'cost' | 'summary';
+  format: 'money' | 'integer';
+  cells: number[];
+  total: number;
+};
+
+type LedgerResponse = {
+  ok: boolean;
+  platform: string;
+  month: string;
+  periods: { label: string; startDate: string; endDate: string }[];
+  rows: LedgerRow[];
+  rates: Record<string, number>;
+  error?: string;
+};
+
+const LEDGER_RATE_FIELDS: { key: string; label: string; suffix: string }[] = [
+  { key: 'commission_per_order', label: 'Comisión por pedido', suffix: '€/pedido' },
+  { key: 'commission_pct', label: 'Comisión por venta', suffix: '% ventas' },
+  { key: 'product_cost_unit', label: 'Coste producto/ud', suffix: '€/ud' },
+  { key: 'gift_cost_unit', label: 'Coste regalos/ud', suffix: '€/ud' },
+  { key: 'md_cost_unit', label: 'Coste M&D/ud', suffix: '€/ud' }
+];
+
+function FinancialLedgerPanel({ platform, currency }: { platform: Platform; currency: string }) {
+  const [month, setMonth] = useState(() => monthInputFromDate(new Date()));
+  const [data, setData] = useState<LedgerResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [rateDrafts, setRateDrafts] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({ month, platform });
+      const res = await fetch(`/api/sales/ledger?${params.toString()}`, { cache: 'no-store' });
+      const json = (await res.json()) as LedgerResponse;
+      if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudo cargar el panel financiero.');
+      setData(json);
+      setDrafts({});
+      setRateDrafts({});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al cargar.');
+    } finally {
+      setLoading(false);
+    }
+  }, [month, platform]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const saveCell = useCallback(
+    async (periodLabel: string, lineKey: string, raw: string) => {
+      const trimmed = raw.trim();
+      const amount = trimmed === '' ? 0 : Number(trimmed.replace(',', '.'));
+      if (!Number.isFinite(amount)) return;
+      setSaving(true);
+      try {
+        const res = await fetch('/api/sales/ledger', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ month, periodLabel, lineKey, amount })
+        });
+        if (!res.ok) throw new Error('No se pudo guardar.');
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error al guardar.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load, month]
+  );
+
+  const saveRate = useCallback(
+    async (key: string, raw: string) => {
+      const trimmed = raw.trim();
+      if (trimmed === '') return;
+      const value = Number(trimmed.replace(',', '.'));
+      if (!Number.isFinite(value) || value < 0) return;
+      setSaving(true);
+      try {
+        const res = await fetch('/api/sales/ledger/settings', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key, value })
+        });
+        if (!res.ok) throw new Error('No se pudo guardar el ajuste.');
+        await load();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Error al guardar.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [load]
+  );
+
+  const formatCell = (row: LedgerRow, value: number) =>
+    row.format === 'integer' ? formatNumber(value) : formatMoney(value, currency);
+
+  return (
+    <section className="db-section panel fin-ledger">
+      <div className="fin-ledger-head">
+        <div>
+          <h2 className="db-section-title" style={{ margin: 0 }}>Panel financiero (mensual)</h2>
+          <p className="sales-orders-meta">
+            Unidades, pedidos y ventas se calculan desde los pedidos; el resto se introduce a mano.
+          </p>
+        </div>
+        <div className="fin-ledger-controls">
+          <label className="sales-date-field">
+            <span>Mes</span>
+            <input
+              type="month"
+              value={month}
+              onChange={(e) => {
+                if (e.target.value) setMonth(e.target.value);
+              }}
+            />
+          </label>
+          <button className="ghost-button" type="button" onClick={() => void load()} disabled={loading}>
+            {loading ? 'Cargando...' : 'Actualizar'}
+          </button>
+        </div>
+      </div>
+
+      <div className="fin-ledger-rates">
+        {LEDGER_RATE_FIELDS.map((field) => {
+          const current = data?.rates?.[field.key];
+          const draftValue = rateDrafts[field.key];
+          const currentText = current !== undefined ? String(current) : '';
+          return (
+            <label key={field.key} className="fin-ledger-rate">
+              <span>{field.label}</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={draftValue !== undefined ? draftValue : currentText}
+                onChange={(e) => setRateDrafts((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                onBlur={(e) => {
+                  if (draftValue !== undefined && draftValue !== currentText) void saveRate(field.key, e.target.value);
+                }}
+                disabled={!data || saving}
+              />
+              <small>{field.suffix}</small>
+            </label>
+          );
+        })}
+      </div>
+
+      {error ? <p style={{ color: 'var(--error-red)' }}>{error}</p> : null}
+      {loading && !data ? (
+        <div className="empty-state" style={{ minHeight: 80 }}>Cargando panel financiero...</div>
+      ) : null}
+
+      {data ? (
+        <div className="sales-table-wrap">
+          <table className="fin-ledger-table">
+            <thead>
+              <tr>
+                <th className="fin-ledger-concept">Concepto</th>
+                {data.periods.map((period) => (
+                  <th key={period.label} className="num">
+                    {period.label}
+                  </th>
+                ))}
+                <th className="num fin-ledger-total-col">TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.rows.map((row) => (
+                <tr key={row.key} className={`fin-ledger-row-${row.group} fin-ledger-kind-${row.kind}`}>
+                  <td className="fin-ledger-concept">{row.label}</td>
+                  {row.cells.map((value, index) => {
+                    const period = data.periods[index];
+                    const cellKey = `${period.label}::${row.key}`;
+                    if (row.kind === 'manual') {
+                      const draftValue = drafts[cellKey];
+                      const display = draftValue !== undefined ? draftValue : value ? String(value) : '';
+                      return (
+                        <td key={cellKey} className="num fin-ledger-input-cell">
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={display}
+                            placeholder="0"
+                            onChange={(e) => setDrafts((prev) => ({ ...prev, [cellKey]: e.target.value }))}
+                            onBlur={(e) => {
+                              if (draftValue !== undefined) void saveCell(period.label, row.key, e.target.value);
+                            }}
+                            disabled={saving}
+                          />
+                        </td>
+                      );
+                    }
+                    return (
+                      <td
+                        key={cellKey}
+                        className={`num${value < 0 ? ' fin-ledger-neg' : ''}${value === 0 ? ' muted' : ''}`}
+                      >
+                        {formatCell(row, value)}
+                      </td>
+                    );
+                  })}
+                  <td className={`num fin-ledger-total-col${row.total < 0 ? ' fin-ledger-neg' : ''}`}>
+                    {formatCell(row, row.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function ChannelFinancePanel({
   rows,
   financeKpis,
@@ -807,6 +1036,8 @@ export function SalesClient() {
                 </p>
               </section>
             </div>
+
+            <FinancialLedgerPanel platform={platform} currency={currency} />
 
             <ChannelFinancePanel
               rows={data.byPlatformFinancial}

@@ -441,7 +441,7 @@ function sum<T>(list: T[], pick: (item: T) => number): number {
   return list.reduce((acc, item) => acc + pick(item), 0);
 }
 
-function toNumber(value: unknown): number {
+export function toNumber(value: unknown): number {
   if (typeof value === 'number') return value;
   if (value && typeof value === 'object' && 'toNumber' in value && typeof (value as { toNumber: unknown }).toNumber === 'function') {
     return (value as { toNumber: () => number }).toNumber();
@@ -449,7 +449,7 @@ function toNumber(value: unknown): number {
   return Number(value ?? 0);
 }
 
-function round2(n: number): number {
+export function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 

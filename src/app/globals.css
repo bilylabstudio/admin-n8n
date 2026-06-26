@@ -2982,3 +2982,155 @@ button {
   color: var(--gummy-teal);
   font-weight: 700;
 }
+
+/* ── Panel financiero (ledger estilo Excel) ── */
+.fin-ledger-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.fin-ledger-controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.fin-ledger-rates {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--surface-muted, rgba(99, 178, 183, 0.06));
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+}
+
+.fin-ledger-rate {
+  display: grid;
+  gap: 4px;
+  min-width: 120px;
+}
+
+.fin-ledger-rate span {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-muted);
+  text-transform: uppercase;
+}
+
+.fin-ledger-rate input {
+  min-height: 31px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 8px;
+  text-align: right;
+}
+
+.fin-ledger-rate input:focus {
+  outline: 2px solid rgba(99, 178, 183, 0.18);
+  border-color: var(--gummy-teal);
+}
+
+.fin-ledger-rate small {
+  font-size: 10px;
+  color: var(--ink-muted);
+}
+
+.fin-ledger-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.fin-ledger-table th,
+.fin-ledger-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.fin-ledger-table th {
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.fin-ledger-table .num {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.fin-ledger-table .muted {
+  color: var(--ink-muted);
+}
+
+.fin-ledger-concept {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  text-align: left;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fin-ledger-total-col {
+  background: rgba(99, 178, 183, 0.08);
+  font-weight: 700;
+}
+
+.fin-ledger-neg {
+  color: var(--error-red);
+}
+
+/* Filas de resumen (TOTAL COSTES, Margen) y metricas base destacadas */
+.fin-ledger-row-summary td {
+  font-weight: 700;
+  border-top: 1px solid var(--line);
+  background: rgba(99, 178, 183, 0.05);
+}
+
+.fin-ledger-row-summary .fin-ledger-concept {
+  background: rgba(99, 178, 183, 0.05);
+  text-transform: uppercase;
+  font-size: 12px;
+}
+
+.fin-ledger-kind-auto .fin-ledger-concept {
+  font-weight: 700;
+}
+
+.fin-ledger-input-cell {
+  padding: 3px 6px;
+}
+
+.fin-ledger-input-cell input {
+  width: 100%;
+  min-width: 78px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  padding: 3px 6px;
+  text-align: right;
+}
+
+.fin-ledger-input-cell input:focus {
+  outline: 2px solid rgba(99, 178, 183, 0.18);
+  border-color: var(--gummy-teal);
+}

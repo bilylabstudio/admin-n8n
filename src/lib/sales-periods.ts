@@ -32,24 +32,29 @@ export function defaultRangeForPeriod(period: PresetPeriod, now = new Date()) {
   return { start: dateInputFromDate(start), end: today };
 }
 
+// Sub-periodos del mes al estilo del Excel financiero: 1-5, 6-12, 13-19, 20-26, 27-fin.
+// El dia de inicio de cada bloque es fijo; el fin de cada bloque es el dia anterior al
+// siguiente inicio (y el ultimo bloque llega al fin de mes).
+export const EXCEL_PERIOD_STARTS = [1, 6, 13, 20, 27];
+
 export function buildMonthWeekPresets(monthInput: string) {
   const [year, month] = monthInput.split('-').map(Number);
   const safeYear = Number.isFinite(year) ? year : new Date().getUTCFullYear();
   const safeMonth = Number.isFinite(month) ? month : new Date().getUTCMonth() + 1;
   const lastDay = new Date(Date.UTC(safeYear, safeMonth, 0)).getUTCDate();
 
-  return [
-    { label: '1-7', start: 1, end: Math.min(7, lastDay) },
-    { label: '8-14', start: 8, end: Math.min(14, lastDay) },
-    { label: '15-21', start: 15, end: Math.min(21, lastDay) },
-    { label: '22-fin', start: 22, end: lastDay }
-  ]
-    .filter((r) => r.start <= lastDay)
-    .map((r) => ({
-      label: r.label,
-      startDate: makeDateInput(safeYear, safeMonth, r.start),
-      endDate: makeDateInput(safeYear, safeMonth, r.end)
-    }));
+  const starts = EXCEL_PERIOD_STARTS.filter((start) => start <= lastDay);
+
+  return starts.map((start, index) => {
+    const nextStart = starts[index + 1];
+    const end = nextStart ? Math.min(nextStart - 1, lastDay) : lastDay;
+    const label = nextStart ? `${start}-${end}` : `${start}-fin`;
+    return {
+      label,
+      startDate: makeDateInput(safeYear, safeMonth, start),
+      endDate: makeDateInput(safeYear, safeMonth, end)
+    };
+  });
 }
 
 function makeDateInput(year: number, month: number, day: number) {
