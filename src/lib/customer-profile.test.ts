@@ -465,3 +465,209 @@ describe('getCustomerProfileByEmail', () => {
     );
   });
 });
+
+// Cobertura de la deteccion de "es de suscripcion" (Riesgo 2 del plan): el estado
+// generated_* solo se aplica si getSubscriptionEvidence reconoce el pedido como de
+// suscripcion. Estas pruebas fijan el contrato del que depende el flujo de n8n.
+describe('subscription order evidence', () => {
+  beforeEach(() => {
+    count.mockReset();
+    findMany.mockReset();
+  });
+
+  it('detects a Loop renewal via line item selling_plan (no channel)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'sp-loop',
+        orderNumber: '#50120',
+        externalOrderId: '50120',
+        processedAt: new Date('2026-06-23T09:00:00.000Z'),
+        fulfillmentStatus: null,
+        channel: null,
+        rawJson: {
+          line_items: [
+            { title: 'V-Gummies | Gominolas Vinagre de Manzana', selling_plan_allocation: { selling_plan: { id: 7 } } }
+          ]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['No reconozco este pedido, no he vuelto a pedir nada'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext).toEqual(
+      expect.objectContaining({
+        hasRelevantSubscriptionOrder: true,
+        state: 'generated_not_shipped',
+        matchType: 'recent_generated'
+      })
+    );
+    expect(profile.subscriptionOrderContext.latestSubscriptionOrder?.subscriptionEvidence).toContain(
+      'line_item_selling_plan'
+    );
+  });
+
+  it('detects a subscription order via line item text (recarga cada N dias)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'text-loop',
+        orderNumber: '#50121',
+        externalOrderId: '50121',
+        processedAt: new Date('2026-06-24T09:00:00.000Z'),
+        fulfillmentStatus: 'fulfilled',
+        channel: null,
+        rawJson: {
+          source_name: 'web',
+          line_items: [{ name: 'V-Gummies Recarga cada 24 dias', sku: 'DTOX-1' }]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Ya lo recibi y quiero devolverlo'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext.state).toBe('generated_processed');
+    expect(profile.subscriptionOrderContext.latestSubscriptionOrder?.subscriptionEvidence).toContain(
+      'line_item_subscription_text'
+    );
+  });
+
+  it('detects a subscription order via source_name (loop)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'srcname-loop',
+        orderNumber: '#50122',
+        externalOrderId: '50122',
+        processedAt: new Date('2026-06-23T09:00:00.000Z'),
+        fulfillmentStatus: null,
+        channel: null,
+        rawJson: { source_name: 'loop_subscriptions', line_items: [{ name: 'V-Gummies' }] }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['No quiero esta suscripcion, devolvedme el dinero'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.subscriptionOrderContext.state).toBe('generated_not_shipped');
+    expect(profile.subscriptionOrderContext.latestSubscriptionOrder?.subscriptionEvidence).toContain(
+      'source_name_subscription'
+    );
+  });
+
+  it('does NOT treat a recent NON-subscription order as a relevant subscription order', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValueOnce([
+      shopifyOrder({
+        id: 'plain-order',
+        orderNumber: '#50123',
+        externalOrderId: '50123',
+        processedAt: new Date('2026-06-24T09:00:00.000Z'),
+        fulfillmentStatus: null,
+        channel: 'Tienda online',
+        rawJson: { source_name: 'web', line_items: [{ name: 'V-Gummies | Pack 1x', sku: 'DTOX-1' }] }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['Quiero cancelar la suscripcion'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    // Sin evidencia de suscripcion, el pedido reciente no convierte el caso en generated_*.
+    expect(profile.subscriptionOrderContext.hasRelevantSubscriptionOrder).toBe(false);
+    expect(profile.subscriptionOrderContext.state).toBe('not_generated_detected');
+  });
+});
+
+describe('getCustomerProfile live order fallback', () => {
+  beforeEach(() => {
+    count.mockReset();
+    findMany.mockReset();
+    findMany.mockResolvedValue([]);
+  });
+
+  it('uses the live fetcher when the synced DB has no relevant subscription order (caso raul)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([]); // BD sincronizada todavia sin el pedido
+
+    const liveOrderFetcher = vi.fn().mockResolvedValue([
+      shopifyOrder({
+        id: 'shopify:49912',
+        orderNumber: '#49912',
+        externalOrderId: '49912',
+        processedAt: new Date('2026-06-24T08:47:00.000Z'),
+        financialStatus: 'paid',
+        fulfillmentStatus: null,
+        channel: 'Loop Subscriptions',
+        rawJson: {
+          source_name: 'Loop Subscriptions',
+          line_items: [{ name: 'V-Gummies', selling_plan_allocation: { selling_plan: { id: 1 } } }]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile(
+      {
+        email: 'meneses.raul@hotmail.com',
+        texts: ['Re: Confirmacion de pedido #49912', 'nosotros no hemos hecho ningun pedido'],
+        referenceDate: '2026-06-28T15:25:00.000Z'
+      },
+      { liveOrderFetcher }
+    );
+
+    expect(liveOrderFetcher).toHaveBeenCalledOnce();
+    expect(profile.subscriptionOrderContext.hasRelevantSubscriptionOrder).toBe(true);
+    expect(profile.subscriptionOrderContext.state).toBe('generated_not_shipped');
+  });
+
+  it('is fail-open: a throwing live fetcher keeps the DB context', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([]);
+    const liveOrderFetcher = vi.fn().mockRejectedValue(new Error('timeout'));
+
+    const profile = await getCustomerProfile(
+      { email: 'cliente@example.com', texts: ['quiero darme de baja'], referenceDate: '2026-06-28T15:25:00.000Z' },
+      { liveOrderFetcher }
+    );
+
+    expect(liveOrderFetcher).toHaveBeenCalledOnce();
+    expect(profile.subscriptionOrderContext.hasRelevantSubscriptionOrder).toBe(false);
+  });
+
+  it('does NOT call the live fetcher when the DB already has a relevant subscription order', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([
+      shopifyOrder({
+        id: 'db-1',
+        orderNumber: '#49912',
+        externalOrderId: '49912',
+        processedAt: new Date('2026-06-24T08:47:00.000Z'),
+        fulfillmentStatus: null,
+        channel: 'Loop Subscriptions',
+        rawJson: { source_name: 'Loop Subscriptions' }
+      })
+    ]);
+    const liveOrderFetcher = vi.fn().mockResolvedValue([]);
+
+    const profile = await getCustomerProfile(
+      { email: 'cliente@example.com', texts: ['#49912 no lo reconozco'], referenceDate: '2026-06-28T15:25:00.000Z' },
+      { liveOrderFetcher }
+    );
+
+    expect(liveOrderFetcher).not.toHaveBeenCalled();
+    expect(profile.subscriptionOrderContext.hasRelevantSubscriptionOrder).toBe(true);
+  });
+});

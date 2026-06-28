@@ -347,8 +347,9 @@ const LEDGER_RATE_FIELDS: { key: string; label: string; suffix: string }[] = [
   { key: 'md_cost_unit', label: 'Coste M&D/ud', suffix: '€/ud' }
 ];
 
-function FinancialLedgerPanel({ platform, currency }: { platform: Platform; currency: string }) {
+function FinancialLedgerPanel({ currency }: { currency: string }) {
   const [month, setMonth] = useState(() => monthInputFromDate(new Date()));
+  const [platform, setPlatform] = useState<Platform>('shopify');
   const [data, setData] = useState<LedgerResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -434,10 +435,20 @@ function FinancialLedgerPanel({ platform, currency }: { platform: Platform; curr
         <div>
           <h2 className="db-section-title" style={{ margin: 0 }}>Panel financiero (mensual)</h2>
           <p className="sales-orders-meta">
-            Unidades, pedidos y ventas se calculan desde los pedidos; el resto se introduce a mano.
+            Unidades, pedidos y ventas se calculan desde los pedidos de la plataforma elegida; el resto se introduce a mano.
           </p>
         </div>
         <div className="fin-ledger-controls">
+          <label className="sales-date-field">
+            <span>Plataforma</span>
+            <select value={platform} onChange={(e) => setPlatform(e.target.value as Platform)}>
+              {PLATFORMS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="sales-date-field">
             <span>Mes</span>
             <input
@@ -1037,7 +1048,7 @@ export function SalesClient() {
               </section>
             </div>
 
-            <FinancialLedgerPanel platform={platform} currency={currency} />
+            <FinancialLedgerPanel currency={currency} />
 
             <ChannelFinancePanel
               rows={data.byPlatformFinancial}

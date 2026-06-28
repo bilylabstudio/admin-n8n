@@ -69,7 +69,19 @@ export type CustomerProfileLookupInput = {
   referenceDate?: string | Date | null | undefined;
 };
 
-type PlatformOrderRow = {
+// Consulta de pedidos EN VIVO contra Shopify (via el endpoint n8n de lookup).
+// Se inyecta para que este modulo siga siendo puro/sin red y testeable.
+export type LiveOrderFetcher = (args: {
+  email: string;
+  orderNumbers: string[];
+  referenceDate: Date;
+}) => Promise<PlatformOrderRow[]>;
+
+export type GetCustomerProfileOptions = {
+  liveOrderFetcher?: LiveOrderFetcher;
+};
+
+export type PlatformOrderRow = {
   id: string;
   platform: string;
   orderNumber: string | null;
@@ -115,7 +127,8 @@ export async function getCustomerProfileByEmail(
 }
 
 export async function getCustomerProfile(
-  input: CustomerProfileLookupInput
+  input: CustomerProfileLookupInput,
+  options: GetCustomerProfileOptions = {}
 ): Promise<CustomerProfile> {
   const email = normalizeCustomerEmail(input.email);
   const texts = input.texts || [];
@@ -129,13 +142,41 @@ export async function getCustomerProfile(
       orderNumbers.length ? findOrdersByOrderNumbers(orderNumbers) : Promise.resolve([])
     ]);
 
-    const orders = dedupeOrders([...orderNumberRows, ...emailRows]);
-    const subscriptionOrderContext = buildSubscriptionOrderContext({
+    let orders = dedupeOrders([...orderNumberRows, ...emailRows]);
+    let subscriptionOrderContext = buildSubscriptionOrderContext({
       orders,
       orderNumbers,
       texts,
       referenceDate
     });
+
+    // Fallback EN VIVO: si la BD sincronizada (cada hora) no tiene un pedido de
+    // suscripcion relevante, consultar Shopify en vivo y recomputar. Gated (solo
+    // cuando el llamador inyecta el fetcher) y fail-open (cualquier error -> se
+    // conserva el contexto de la BD).
+    if (
+      !subscriptionOrderContext.hasRelevantSubscriptionOrder &&
+      options.liveOrderFetcher &&
+      (email || orderNumbers.length > 0)
+    ) {
+      const liveRows = await safeLiveFetch(options.liveOrderFetcher, {
+        email,
+        orderNumbers,
+        referenceDate
+      });
+      if (liveRows.length) {
+        orders = mergeOrdersByExternalId(orders, liveRows);
+        const liveContext = buildSubscriptionOrderContext({
+          orders,
+          orderNumbers,
+          texts,
+          referenceDate
+        });
+        if (liveContext.hasRelevantSubscriptionOrder) {
+          subscriptionOrderContext = liveContext;
+        }
+      }
+    }
 
     return {
       email,
@@ -146,6 +187,30 @@ export async function getCustomerProfile(
   } catch {
     return emptyCustomerProfile(email, texts, referenceDate);
   }
+}
+
+async function safeLiveFetch(
+  fetcher: LiveOrderFetcher,
+  args: { email: string; orderNumbers: string[]; referenceDate: Date }
+): Promise<PlatformOrderRow[]> {
+  try {
+    const rows = await fetcher(args);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function mergeOrdersByExternalId(base: PlatformOrderRow[], extra: PlatformOrderRow[]) {
+  const seen = new Set(base.map((row) => `${row.platform}:${row.externalOrderId}`));
+  const merged = [...base];
+  for (const row of extra) {
+    const key = `${row.platform}:${row.externalOrderId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    merged.push(row);
+  }
+  return merged;
 }
 
 async function findOrdersByEmail(email: string): Promise<PlatformOrderRow[]> {
