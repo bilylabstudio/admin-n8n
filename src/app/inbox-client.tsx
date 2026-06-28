@@ -24,7 +24,7 @@ type TicketEvent = {
 };
 
 type TicketTag = {
-  id: 'escalate' | 'refund' | 'shipping' | 'product';
+  id: 'warehouse' | 'office_3x2' | 'carrier_incident' | 'escalate' | 'refund' | 'shipping' | 'product';
   label: string;
   tone: 'danger' | 'warning' | 'info' | 'neutral';
 };
@@ -135,6 +135,9 @@ const POLL_MS = 7000;
 const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
 const tagFilterOptions: { id: ActiveTagFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
+  { id: 'warehouse', label: 'Incidencia almacen' },
+  { id: 'office_3x2', label: 'Enviar unidad extra' },
+  { id: 'carrier_incident', label: 'Incidencia transporte' },
   { id: 'escalate', label: 'Escalar' },
   { id: 'refund', label: 'Devolucion' },
   { id: 'shipping', label: 'Problema envio' },

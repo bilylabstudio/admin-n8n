@@ -1,4 +1,7 @@
 export const ticketTagDefinitions = [
+  { id: 'warehouse', label: 'Incidencia almacen', tone: 'danger' },
+  { id: 'office_3x2', label: 'Enviar unidad extra', tone: 'warning' },
+  { id: 'carrier_incident', label: 'Incidencia transporte', tone: 'danger' },
   { id: 'escalate', label: 'Escalar', tone: 'danger' },
   { id: 'refund', label: 'Devolucion', tone: 'warning' },
   { id: 'shipping', label: 'Problema envio', tone: 'info' },
@@ -16,6 +19,66 @@ export type TaggableTicket = {
   riskFlags?: string | null;
   escalationRecommended?: boolean | null;
 };
+
+// Banderas de incidencia puestas por el bot (no por el texto del cliente): se buscan
+// solo en category/intent/riskFlags para no disparar con que el cliente escriba
+// "almacen" o "error 3x2" en su mensaje. Tokens: incidencia_almacen / error_3x2.
+const warehousePatterns = ['incidencia_almacen', 'incidencia almacen'];
+const office3x2Patterns = ['error_3x2', 'error 3x2'];
+const carrierIncidentRiskPatterns = [
+  'incidencia_transporte',
+  'incidencia transporte',
+  'incidencia_tipsa',
+  'incidencia tipsa',
+  'carrier_incident',
+  'tipsa_incident'
+];
+
+const carrierIncidentCarrierPatterns = [
+  'tipsa',
+  'dinapaq',
+  'transportista',
+  'mensajeria',
+  'repartidor',
+  'empresa de transporte',
+  'agencia de transporte'
+];
+
+const carrierIncidentEvidencePatterns = [
+  'ausente',
+  'destinatario ausente',
+  'dado por ausente',
+  'perdido',
+  'extraviado',
+  'incidencia',
+  'intento falso',
+  'estaba en casa',
+  'no aparece informacion',
+  'no hay informacion',
+  'entregado pero no recibido',
+  'entregado y no recibido',
+  'entregado y no lo he recibido',
+  'devuelto por ausencia',
+  'devolucion por ausencia',
+  'no localizado'
+];
+
+const carrierIncidentStrongTextPatterns = [
+  'paquete perdido',
+  'pedido perdido',
+  'perdido el paquete',
+  'perdido mi paquete',
+  'paquete extraviado',
+  'pedido extraviado',
+  'dado por ausente',
+  'destinatario ausente',
+  'marcado como ausente',
+  'me marca ausente',
+  'intento falso de entrega',
+  'entregado pero no recibido',
+  'entregado y no recibido',
+  'entregado y no lo he recibido'
+];
 
 const escalationPatterns = ['riesgo', 'humana', 'humano', 'manual', 'escalar', 'revisar'];
 
@@ -93,6 +156,18 @@ export function getTicketTags(ticket: TaggableTicket): TicketTag[] {
   const riskHaystack = normalize([ticket.category, ticket.intent, ticket.riskFlags].join(' '));
   const ids: TicketTagId[] = [];
 
+  if (includesAny(riskHaystack, warehousePatterns)) {
+    ids.push('warehouse');
+  }
+
+  if (includesAny(riskHaystack, office3x2Patterns)) {
+    ids.push('office_3x2');
+  }
+
+  if (includesAny(riskHaystack, carrierIncidentRiskPatterns) || hasCarrierIncidentText(haystack)) {
+    ids.push('carrier_incident');
+  }
+
   if (ticket.escalationRecommended || includesAny(riskHaystack, escalationPatterns)) {
     ids.push('escalate');
   }
@@ -114,6 +189,13 @@ export function getTicketTags(ticket: TaggableTicket): TicketTag[] {
 
 function includesAny(value: string, patterns: string[]) {
   return patterns.some((pattern) => value.includes(pattern));
+}
+
+function hasCarrierIncidentText(value: string) {
+  return (
+    includesAny(value, carrierIncidentStrongTextPatterns) ||
+    (includesAny(value, carrierIncidentCarrierPatterns) && includesAny(value, carrierIncidentEvidencePatterns))
+  );
 }
 
 function normalize(value: string) {
