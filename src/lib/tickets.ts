@@ -23,6 +23,8 @@ export const ingestTicketSchema = z.object({
   sentiment: sentimentSchema.nullable().optional(),
   sentiment_source: z.string().optional().default(''),
   requires_review: z.boolean().optional().default(false),
+  auto_discard: z.boolean().optional().default(false),
+  discard_reason: z.string().optional().default(''),
   case_reasoning: z.unknown().optional(),
   critic: z.unknown().optional(),
   source: z.string().optional().default('webmail'),
@@ -61,7 +63,14 @@ export async function ingestTicket(input: IngestTicketInput) {
     where: { externalMessageId: input.external_message_id }
   });
 
-  const nextStatus = nextStatusAfterIngest(Boolean(input.ai_reply.trim()));
+  const autoDiscard = Boolean(input.auto_discard);
+  const nextStatus = autoDiscard ? 'discarded' : nextStatusAfterIngest(Boolean(input.ai_reply.trim()));
+  const aiReply = autoDiscard ? '' : input.ai_reply;
+  const riskFlags = [
+    input.risk_flags,
+    autoDiscard ? 'auto_discard' : '',
+    autoDiscard && input.discard_reason ? `discard_reason:${input.discard_reason}` : ''
+  ].filter(Boolean).join(',');
 
   if (existing && !canUpdateFromIngest(existing.status)) {
     return existing;
@@ -76,15 +85,15 @@ export async function ingestTicket(input: IngestTicketInput) {
       receivedAt: new Date(input.received_at),
       source: input.source,
       originalText: input.original_text,
-      aiReply: input.ai_reply,
+      aiReply,
       category: input.category,
       intent: input.intent,
-      riskFlags: input.risk_flags,
-      escalationRecommended: input.escalation_recommended,
+      riskFlags,
+      escalationRecommended: autoDiscard ? false : input.escalation_recommended,
       aiConfidence: input.ai_confidence ?? null,
       confidenceLabel: input.confidence_label || null,
       ...metricUpdateData(input),
-      requiresReview: input.requires_review,
+      requiresReview: autoDiscard ? false : input.requires_review,
       caseReasoningJson: input.case_reasoning as never,
       criticJson: input.critic as never,
       imapUid: input.imap_uid || null,
@@ -104,15 +113,15 @@ export async function ingestTicket(input: IngestTicketInput) {
       receivedAt: new Date(input.received_at),
       source: input.source,
       originalText: input.original_text,
-      aiReply: input.ai_reply,
+      aiReply,
       category: input.category,
       intent: input.intent,
-      riskFlags: input.risk_flags,
-      escalationRecommended: input.escalation_recommended,
+      riskFlags,
+      escalationRecommended: autoDiscard ? false : input.escalation_recommended,
       aiConfidence: input.ai_confidence ?? null,
       confidenceLabel: input.confidence_label || null,
       ...metricCreateData(input),
-      requiresReview: input.requires_review,
+      requiresReview: autoDiscard ? false : input.requires_review,
       caseReasoningJson: input.case_reasoning as never,
       criticJson: input.critic as never,
       imapUid: input.imap_uid || null,
@@ -133,7 +142,9 @@ export async function ingestTicket(input: IngestTicketInput) {
       afterStatus: ticket.status,
       metadataJson: {
         external_message_id: input.external_message_id,
-        source: input.source
+        source: input.source,
+        auto_discard: autoDiscard,
+        discard_reason: input.discard_reason || ''
       }
     }
   });
