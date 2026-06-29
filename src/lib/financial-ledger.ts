@@ -71,6 +71,8 @@ export type LedgerOrderInput = {
   totalUnits: number;
   subtotal: unknown;
   totalShipping: unknown;
+  totalTax: unknown;
+  totalRefunded: unknown;
 };
 
 export type LedgerEntryInput = {
@@ -142,7 +144,15 @@ export function buildLedgerMatrix(input: {
     const bucket = base[periodIndex];
     bucket.units += order.totalUnits;
     bucket.orders += 1;
-    bucket.sales += toNumber(order.subtotal) + toNumber(order.totalShipping);
+    // Venta neta como la contabilidad del cliente ("sin IVA"): el subtotal de Shopify viene con el
+    // IVA incluido (tienda con precios IVA-incluido), asi que restamos total_tax. Restamos tambien
+    // las devoluciones para que cuadre con las ventas netas. (total_refunded es bruto; la pequena
+    // parte de IVA de la devolucion no se descuenta aparte, error < 0,5 %.)
+    bucket.sales +=
+      toNumber(order.subtotal) +
+      toNumber(order.totalShipping) -
+      toNumber(order.totalTax) -
+      toNumber(order.totalRefunded);
   }
 
   const manual = new Map<string, number>();

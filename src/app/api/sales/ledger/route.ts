@@ -12,6 +12,11 @@ import { buildMonthWeekPresets } from '@/lib/sales-periods';
 
 export const dynamic = 'force-dynamic';
 
+// Estados de pago que NO son una venta cobrada: se excluyen para cuadrar con la contabilidad,
+// que solo cuenta ventas reales. Los `refunded`/`partially_refunded` SI se cuentan (la venta
+// existio) y su devolucion se descuenta via total_refunded en buildLedgerMatrix.
+const EXCLUDED_FINANCIAL_STATUSES = ['pending', 'authorized', 'voided'];
+
 export async function GET(request: Request) {
   await requireUser();
 
@@ -26,9 +31,17 @@ export async function GET(request: Request) {
         processedAt: { gte: since, lte: until },
         cancelledAt: null,
         isTest: false,
+        financialStatus: { notIn: EXCLUDED_FINANCIAL_STATUSES },
         ...(platformParam !== 'all' ? { platform: platformParam } : {})
       },
-      select: { processedAt: true, totalUnits: true, subtotal: true, totalShipping: true }
+      select: {
+        processedAt: true,
+        totalUnits: true,
+        subtotal: true,
+        totalShipping: true,
+        totalTax: true,
+        totalRefunded: true
+      }
     }),
     db.financialLedgerEntry.findMany({
       where: { month },
