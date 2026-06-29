@@ -360,6 +360,7 @@ model SupportApprovedResponse {
 // Valores MANUALES del panel financiero estilo Excel: una celda por (mes, sub-periodo, concepto).
 model FinancialLedgerEntry {
   id          String   @id @default(cuid())
+  platform    String   @default("shopify")
   month       String
   periodLabel String
   lineKey     String
@@ -367,13 +368,16 @@ model FinancialLedgerEntry {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([month, periodLabel, lineKey])
-  @@index([month])
+  @@unique([platform, month, periodLabel, lineKey])
+  @@index([platform, month])
 }
 
-// Tasas configurables del panel financiero (comisiones y costes por unidad).
+// Tasas configurables del panel financiero (comisiones y costes por unidad), por plataforma.
 model FinancialSetting {
-  key       String   @id
+  platform  String   @default("shopify")
+  key       String
   value     Decimal  @db.Decimal(12, 4)
   updatedAt DateTime @updatedAt
+
+  @@id([platform, key])
 }

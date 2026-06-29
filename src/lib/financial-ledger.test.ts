@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildLedgerMatrix, LEDGER_RATE_DEFAULTS, type LedgerOrderInput } from './financial-ledger';
+import {
+  buildLedgerMatrix,
+  rateDefaults,
+  type LedgerFeeInput,
+  type LedgerOrderInput
+} from './financial-ledger';
 
 function row(matrix: ReturnType<typeof buildLedgerMatrix>, key: string) {
   const found = matrix.rows.find((r) => r.key === key);
@@ -7,7 +12,7 @@ function row(matrix: ReturnType<typeof buildLedgerMatrix>, key: string) {
   return found;
 }
 
-describe('buildLedgerMatrix', () => {
+describe('buildLedgerMatrix · shopify', () => {
   const orders: LedgerOrderInput[] = [
     { processedAt: new Date('2026-06-03T12:00:00.000Z'), totalUnits: 2, subtotal: 100, totalShipping: 10, totalTax: 10, totalRefunded: 0 },
     { processedAt: new Date('2026-06-04T12:00:00.000Z'), totalUnits: 1, subtotal: 50, totalShipping: 5, totalTax: 5, totalRefunded: 0 },
@@ -17,9 +22,10 @@ describe('buildLedgerMatrix', () => {
   ];
 
   const matrix = buildLedgerMatrix({
+    platform: 'shopify',
     month: '2026-06',
     orders,
-    rates: LEDGER_RATE_DEFAULTS,
+    rates: rateDefaults('shopify'),
     entries: [
       { periodLabel: '1-5', lineKey: 'ads_meta', amount: 40 },
       { periodLabel: '1-5', lineKey: 'tipsa', amount: 12 }
@@ -30,11 +36,10 @@ describe('buildLedgerMatrix', () => {
     expect(matrix.periods.map((p) => p.label)).toEqual(['1-5', '6-12', '13-19', '20-26', '27-fin']);
   });
 
-  it('calcula metricas base desde los pedidos por sub-periodo', () => {
+  it('calcula metricas base (ventas netas sin IVA) por sub-periodo', () => {
     expect(row(matrix, 'units').cells).toEqual([3, 3, 0, 0, 0]);
     expect(row(matrix, 'units').total).toBe(6);
     expect(row(matrix, 'orders').cells).toEqual([2, 1, 0, 0, 0]);
-    // Venta neta sin IVA y neta de devoluciones: (subtotal + envio - IVA - devolucion).
     expect(row(matrix, 'sales').cells[0]).toBe(150); // (100+10-10) + (50+5-5)
     expect(row(matrix, 'sales').cells[1]).toBe(180); // 200+20-20-20
     expect(row(matrix, 'sales').total).toBe(330);
@@ -55,9 +60,70 @@ describe('buildLedgerMatrix', () => {
   });
 
   it('suma costes y calcula el margen (ventas - costes)', () => {
-    expect(row(matrix, 'total_costs').cells[0]).toBe(71.5); // tipsa 12 + com_pedido 0.6 + com_venta 2.4 + ads 40 + prod 9.6 + regalos 2.4 + md 4.5
+    expect(row(matrix, 'total_costs').cells[0]).toBe(71.5);
     expect(row(matrix, 'margin').cells[0]).toBe(78.5); // 150 - 71.5
-    expect(row(matrix, 'total_costs').cells[1]).toBe(19.68); // com_pedido 0.3 + com_venta 2.88 + prod 9.6 + regalos 2.4 + md 4.5
+    expect(row(matrix, 'total_costs').cells[1]).toBe(19.68);
     expect(row(matrix, 'margin').cells[1]).toBe(160.32); // 180 - 19.68
+  });
+});
+
+describe('buildLedgerMatrix · tiktok_shop', () => {
+  const orders: LedgerOrderInput[] = [
+    { processedAt: new Date('2026-06-03T12:00:00.000Z'), totalUnits: 2, subtotal: 100, totalShipping: 10, totalTax: 10, totalRefunded: 0 }
+  ];
+  const matrix = buildLedgerMatrix({
+    platform: 'tiktok_shop',
+    month: '2026-06',
+    orders,
+    rates: rateDefaults('tiktok_shop'),
+    entries: []
+  });
+
+  it('separa facturacion con IVA y ventas sin IVA', () => {
+    expect(row(matrix, 'facturacion').cells[0]).toBe(110); // 100 + 10 (con IVA)
+    expect(row(matrix, 'sales').cells[0]).toBe(100); // 110 - 10 IVA
+  });
+
+  it('calcula los % sobre la facturacion con IVA', () => {
+    expect(row(matrix, 'fbt').cells[0]).toBe(8.25); // 110 * 7.5%
+    expect(row(matrix, 'affiliates').cells[0]).toBe(16.5); // 110 * 15%
+    expect(row(matrix, 'commission_tt').cells[0]).toBe(9.9); // 110 * 9%
+    expect(row(matrix, 'product_cost').cells[0]).toBe(6.4); // 2 uds * 3.2
+  });
+});
+
+describe('buildLedgerMatrix · amazon', () => {
+  const orders: LedgerOrderInput[] = [
+    { processedAt: new Date('2026-06-03T12:00:00.000Z'), totalUnits: 3, subtotal: 200, totalShipping: 0, totalTax: 0, totalRefunded: 0 }
+  ];
+  const fees: LedgerFeeInput[] = [
+    { postedAt: new Date('2026-06-04T12:00:00.000Z'), transactionType: 'Commission', amount: -30 },
+    { postedAt: new Date('2026-06-04T12:00:00.000Z'), transactionType: 'FBAPerUnitFulfillmentFee', amount: -10 }
+  ];
+  const matrix = buildLedgerMatrix({
+    platform: 'amazon',
+    month: '2026-06',
+    orders,
+    fees,
+    rates: rateDefaults('amazon'),
+    entries: [{ periodLabel: '1-5', lineKey: 'ajustes', amount: 5 }]
+  });
+
+  it('ingresos + ajustes = total ventas', () => {
+    expect(row(matrix, 'ingresos').cells[0]).toBe(200);
+    expect(row(matrix, 'ajustes').cells[0]).toBe(5);
+    expect(row(matrix, 'total_ventas').cells[0]).toBe(205);
+  });
+
+  it('toma comision y logistica de los fees reales (en positivo)', () => {
+    expect(row(matrix, 'commission_amz').cells[0]).toBe(30);
+    expect(row(matrix, 'logistica_amz').cells[0]).toBe(10);
+    expect(row(matrix, 'product_cost').cells[0]).toBe(14.1); // 3 uds * 4.7
+  });
+
+  it('margen = (ingresos + ajustes) - costes', () => {
+    // costes = 30 + 10 + 14.1 = 54.1
+    expect(row(matrix, 'total_costs').cells[0]).toBe(54.1);
+    expect(row(matrix, 'margin').cells[0]).toBe(150.9); // 205 - 54.1
   });
 });

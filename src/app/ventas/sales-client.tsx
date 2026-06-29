@@ -336,16 +336,12 @@ type LedgerResponse = {
   periods: { label: string; startDate: string; endDate: string }[];
   rows: LedgerRow[];
   rates: Record<string, number>;
+  rateFields: { key: string; label: string; suffix: string }[];
   error?: string;
 };
 
-const LEDGER_RATE_FIELDS: { key: string; label: string; suffix: string }[] = [
-  { key: 'commission_per_order', label: 'Comisión por pedido', suffix: '€/pedido' },
-  { key: 'commission_pct', label: 'Comisión por venta', suffix: '% ventas' },
-  { key: 'product_cost_unit', label: 'Coste producto/ud', suffix: '€/ud' },
-  { key: 'gift_cost_unit', label: 'Coste regalos/ud', suffix: '€/ud' },
-  { key: 'md_cost_unit', label: 'Coste M&D/ud', suffix: '€/ud' }
-];
+// El panel financiero solo aplica a plataformas con pedidos propios (no a "Todas").
+const LEDGER_PLATFORMS = PLATFORMS.filter((option) => option.id !== 'all');
 
 function FinancialLedgerPanel({ currency }: { currency: string }) {
   const [month, setMonth] = useState(() => monthInputFromDate(new Date()));
@@ -389,7 +385,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
         const res = await fetch('/api/sales/ledger', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ month, periodLabel, lineKey, amount })
+          body: JSON.stringify({ platform, month, periodLabel, lineKey, amount })
         });
         if (!res.ok) throw new Error('No se pudo guardar.');
         await load();
@@ -399,7 +395,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
         setSaving(false);
       }
     },
-    [load, month]
+    [load, month, platform]
   );
 
   const saveRate = useCallback(
@@ -413,7 +409,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
         const res = await fetch('/api/sales/ledger/settings', {
           method: 'PUT',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ key, value })
+          body: JSON.stringify({ platform, key, value })
         });
         if (!res.ok) throw new Error('No se pudo guardar el ajuste.');
         await load();
@@ -423,7 +419,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
         setSaving(false);
       }
     },
-    [load]
+    [load, platform]
   );
 
   const formatCell = (row: LedgerRow, value: number) =>
@@ -442,7 +438,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
           <label className="sales-date-field">
             <span>Plataforma</span>
             <select value={platform} onChange={(e) => setPlatform(e.target.value as Platform)}>
-              {PLATFORMS.map((option) => (
+              {LEDGER_PLATFORMS.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.label}
                 </option>
@@ -466,7 +462,7 @@ function FinancialLedgerPanel({ currency }: { currency: string }) {
       </div>
 
       <div className="fin-ledger-rates">
-        {LEDGER_RATE_FIELDS.map((field) => {
+        {(data?.rateFields ?? []).map((field) => {
           const current = data?.rates?.[field.key];
           const draftValue = rateDrafts[field.key];
           const currentText = current !== undefined ? String(current) : '';

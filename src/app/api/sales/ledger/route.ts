@@ -3,9 +3,11 @@ import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import {
   buildLedgerMatrix,
-  MANUAL_LINE_KEYS,
+  getLedgerConfig,
+  manualLineKeys,
   monthQueryRange,
   normalizeMonthInput,
+  resolveLedgerPlatform,
   resolveRates
 } from '@/lib/financial-ledger';
 import { buildMonthWeekPresets } from '@/lib/sales-periods';
@@ -13,9 +15,8 @@ import { buildMonthWeekPresets } from '@/lib/sales-periods';
 export const dynamic = 'force-dynamic';
 
 // La contabilidad del cliente solo cuenta ventas cobradas y no devueltas. Verificado contra los
-// datos reales de abril 2026: contar solo `paid` + `partially_paid` cuadra el total con el Excel
-// (unidades +0,1 %, pedidos +0,4 %). Se excluyen `pending`/`authorized`/`voided` (no cobrados) y
-// `refunded`/`partially_refunded` (devoluciones, que el contable trata como no-venta).
+// datos reales de abril 2026 (Shopify): contar solo `paid` + `partially_paid` cuadra el total con
+// el Excel. Amazon y TikTok normalizan sus estados al mismo vocabulario, asi que aplica igual.
 const SALE_FINANCIAL_STATUSES = ['paid', 'partially_paid'];
 
 export async function GET(request: Request) {
@@ -23,17 +24,18 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const month = normalizeMonthInput(url.searchParams.get('month'));
-  const platformParam = url.searchParams.get('platform') || 'all';
+  const platform = resolveLedgerPlatform(url.searchParams.get('platform'));
   const { since, until } = monthQueryRange(month);
+  const needsFees = getLedgerConfig(platform).rows.some((row) => row.compute?.base === 'fee');
 
-  const [orders, entries, settings] = await Promise.all([
+  const [orders, fees, entries, settings] = await Promise.all([
     db.platformOrder.findMany({
       where: {
+        platform,
         processedAt: { gte: since, lte: until },
         cancelledAt: null,
         isTest: false,
-        financialStatus: { in: SALE_FINANCIAL_STATUSES },
-        ...(platformParam !== 'all' ? { platform: platformParam } : {})
+        financialStatus: { in: SALE_FINANCIAL_STATUSES }
       },
       select: {
         processedAt: true,
@@ -44,19 +46,37 @@ export async function GET(request: Request) {
         totalRefunded: true
       }
     }),
+    needsFees
+      ? db.platformFinancialTransaction.findMany({
+          where: { platform, postedAt: { gte: since, lte: until } },
+          select: { postedAt: true, transactionType: true, feeAmount: true }
+        })
+      : Promise.resolve([] as { postedAt: Date; transactionType: string | null; feeAmount: unknown }[]),
     db.financialLedgerEntry.findMany({
-      where: { month },
+      where: { platform, month },
       select: { periodLabel: true, lineKey: true, amount: true }
     }),
-    db.financialSetting.findMany({ select: { key: true, value: true } })
+    db.financialSetting.findMany({ where: { platform }, select: { key: true, value: true } })
   ]);
 
-  const matrix = buildLedgerMatrix({ month, orders, rates: resolveRates(settings), entries });
+  const matrix = buildLedgerMatrix({
+    platform,
+    month,
+    orders,
+    fees: fees.map((fee) => ({
+      postedAt: fee.postedAt,
+      transactionType: fee.transactionType,
+      amount: fee.feeAmount
+    })),
+    rates: resolveRates(platform, settings),
+    entries
+  });
 
-  return Response.json({ ok: true, platform: platformParam, ...matrix });
+  return Response.json({ ok: true, ...matrix });
 }
 
 const putSchema = z.object({
+  platform: z.string().optional(),
   month: z.string().regex(/^\d{4}-\d{2}$/),
   periodLabel: z.string().min(1),
   lineKey: z.string().min(1),
@@ -73,8 +93,9 @@ export async function PUT(request: Request) {
   }
 
   const { month, periodLabel, lineKey, amount } = parsed.data;
+  const platform = resolveLedgerPlatform(parsed.data.platform);
 
-  if (!MANUAL_LINE_KEYS.includes(lineKey)) {
+  if (!manualLineKeys(platform).includes(lineKey)) {
     return Response.json({ ok: false, error: 'Este concepto no es editable.' }, { status: 400 });
   }
 
@@ -90,8 +111,8 @@ export async function PUT(request: Request) {
   const value = Math.round(amount * 100) / 100;
 
   await db.financialLedgerEntry.upsert({
-    where: { month_periodLabel_lineKey: { month, periodLabel, lineKey } },
-    create: { month, periodLabel, lineKey, amount: value },
+    where: { platform_month_periodLabel_lineKey: { platform, month, periodLabel, lineKey } },
+    create: { platform, month, periodLabel, lineKey, amount: value },
     update: { amount: value }
   });
 
