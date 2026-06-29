@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const platformOrderFindMany = vi.fn();
 const ticketFindMany = vi.fn();
 const supportApprovedResponseFindMany = vi.fn();
+const fetchLiveSubscriptionOrders = vi.fn();
 
 vi.mock('./db', () => ({
   db: {
@@ -12,15 +13,21 @@ vi.mock('./db', () => ({
   }
 }));
 
+vi.mock('./shopify-live-lookup', () => ({
+  fetchLiveSubscriptionOrders
+}));
+
 describe('getBotKnowledge', () => {
   beforeEach(() => {
     platformOrderFindMany.mockReset();
     ticketFindMany.mockReset();
     supportApprovedResponseFindMany.mockReset();
+    fetchLiveSubscriptionOrders.mockReset();
 
     platformOrderFindMany.mockResolvedValue([]);
     ticketFindMany.mockResolvedValue([]);
     supportApprovedResponseFindMany.mockResolvedValue([]);
+    fetchLiveSubscriptionOrders.mockResolvedValue([]);
   });
 
   it('returns orders, previous tickets, and approved response candidates', async () => {
@@ -158,6 +165,61 @@ describe('getBotKnowledge', () => {
         retrieval: expect.objectContaining({
           approved_response_count: 0
         })
+      })
+    );
+  });
+
+  it('uses live order lookup for pure shipping cases when the synced DB has no order', async () => {
+    const { getBotKnowledge } = await import('./bot-knowledge');
+    platformOrderFindMany.mockResolvedValue([]);
+    fetchLiveSubscriptionOrders.mockResolvedValue([
+      {
+        id: 'shopify:9001',
+        platform: 'shopify',
+        orderNumber: '#9001',
+        externalOrderId: '9001',
+        processedAt: new Date('2026-06-26T08:30:00.000Z'),
+        totalPrice: '49.90',
+        currency: 'EUR',
+        financialStatus: 'paid',
+        fulfillmentStatus: 'fulfilled',
+        cancelledAt: null,
+        channel: 'web',
+        rawJson: { source_name: 'web' },
+        isTest: false
+      }
+    ]);
+
+    const knowledge = await getBotKnowledge({
+      external_message_id: 'teresa-shipping',
+      customer_email: 'ttravese@xtec.cat',
+      customer_name: 'Teresa Traveset',
+      subject: 'Re: Manana empieza algo bueno',
+      message:
+        'Aun no he recibido el paquete. Ayer me notificaron que estaba en reparto, pero no llego. Me podrias confirmar si llega hoy?',
+      received_at: '2026-06-26T10:12:00.000Z',
+      classification: {
+        family: 'estado_envio',
+        subintent: 'consulta_estado_envio',
+        conversation_stage: 'followup',
+        has_new_request: true
+      }
+    });
+
+    expect(fetchLiveSubscriptionOrders).toHaveBeenCalledOnce();
+    expect(fetchLiveSubscriptionOrders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        email: 'ttravese@xtec.cat',
+        orderNumbers: [],
+        referenceDate: new Date('2026-06-26T10:12:00.000Z')
+      })
+    );
+    expect(knowledge.retrieval.orders_found).toBe(1);
+    expect(knowledge.recent_orders[0]).toEqual(
+      expect.objectContaining({
+        id: 'shopify:9001',
+        orderNumber: '#9001',
+        fulfillmentStatus: 'fulfilled'
       })
     );
   });

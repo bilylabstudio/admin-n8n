@@ -4,9 +4,10 @@ import type { LiveOrderFetcher, PlatformOrderRow } from './customer-profile';
 //
 // review-admin NO tiene credenciales de Shopify (por diseno): la consulta en vivo
 // se hace via un webhook n8n ("Shopify - Pedidos Lookup") que tiene la credencial
-// OAuth2 y consulta el Admin API por nombre de pedido y/o email. Este cliente es
-// fail-open: cualquier fallo de config/red/timeout devuelve [] y el llamador
-// conserva el contexto de la BD sincronizada.
+// OAuth2 y consulta el Admin API por nombre de pedido y/o email. Lo usan casos de
+// suscripcion, envio/seguimiento y promo cuando la BD sincronizada aun no alcanza.
+// Este cliente es fail-open: cualquier fallo de config/red/timeout devuelve [] y el
+// llamador conserva el contexto de la BD sincronizada.
 
 const LOOKUP_URL =
   process.env.N8N_SHOPIFY_ORDER_LOOKUP_WEBHOOK_URL ||

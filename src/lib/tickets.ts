@@ -50,10 +50,12 @@ function metricCreateData(input: IngestTicketInput) {
 
 function metricUpdateData(input: IngestTicketInput) {
   const sentiment = input.sentiment ?? null;
+  const hasTemplate = Boolean(input.routed_template_id);
+  const hasRouteSource = Boolean(input.route_source);
 
   return {
-    ...(input.routed_template_id ? { routedTemplateId: input.routed_template_id } : {}),
-    ...(input.route_source ? { routeSource: input.route_source } : {}),
+    ...(hasTemplate ? { routedTemplateId: input.routed_template_id } : hasRouteSource ? { routedTemplateId: null } : {}),
+    ...(hasRouteSource ? { routeSource: input.route_source } : {}),
     ...(sentiment ? { sentiment, sentimentSource: input.sentiment_source || null } : {})
   };
 }

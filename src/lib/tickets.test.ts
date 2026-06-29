@@ -132,6 +132,46 @@ describe('ingestTicket', () => {
     expect(update).not.toHaveProperty('sentimentSource');
   });
 
+  it('clears stale template id when a routed draft has no canonical template', async () => {
+    const { ingestTicket } = await import('./tickets');
+    findUnique.mockResolvedValue({ id: 'ticket-1', status: 'pending_review' });
+    upsert.mockImplementation(async (args) => ({ id: 'ticket-1', status: args.update.status }));
+
+    await ingestTicket({
+      external_message_id: 'message-id-1',
+      customer_email: 'cliente@example.com',
+      customer_name: 'Cliente',
+      subject: 'Consulta',
+      received_at: '2026-05-25T10:00:00.000Z',
+      original_text: 'Hola',
+      ai_reply: 'Respuesta libre',
+      category: 'Soporte',
+      intent: 'question',
+      risk_flags: '',
+      escalation_recommended: false,
+      confidence_label: 'open_question_guard',
+      routed_template_id: '',
+      route_source: 'open_subscription_question',
+      sentiment_source: '',
+      requires_review: false,
+      auto_discard: false,
+      discard_reason: '',
+      source: 'webmail',
+      imap_uid: '',
+      imap_mailbox: '',
+      message_id: '',
+      in_reply_to: '',
+      references: ''
+    });
+
+    expect(upsert.mock.calls[0][0].update).toEqual(
+      expect.objectContaining({
+        routedTemplateId: null,
+        routeSource: 'open_subscription_question'
+      })
+    );
+  });
+
   it('creates auto-discarded tickets without an AI reply or review flag', async () => {
     const { ingestTicket } = await import('./tickets');
     upsert.mockImplementation(async (args) => ({ id: 'ticket-1', status: args.create.status }));

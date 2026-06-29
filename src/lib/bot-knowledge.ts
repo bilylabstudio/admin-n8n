@@ -72,10 +72,13 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
 
   // Solo activa la consulta Shopify EN VIVO (fail-open, dentro de getCustomerProfile
   // y solo si la BD no trae pedido de suscripcion relevante) cuando el caso parece de
-  // ambito suscripcion/pedido o una queja de promo 3x2 / pedido incompleto; asi el
+  // ambito suscripcion/pedido, envio/seguimiento o una queja de promo 3x2 /
+  // pedido incompleto; asi el
   // camino comun no anade latencia ni llamadas.
   const liveOrderFetcher =
-    looksSubscriptionScope(texts, input.classification) || looksPromoScope(texts)
+    looksSubscriptionScope(texts, input.classification) ||
+    looksPromoScope(texts) ||
+    looksShippingScope(texts, input.classification)
       ? fetchLiveSubscriptionOrders
       : undefined;
 
@@ -140,6 +143,39 @@ function looksPromoScope(texts: Array<string | null | undefined>): boolean {
   return /\b3\s*x\s*2\b|3 por 2|2\s*\+\s*1|solo (me )?(han |me )?lleg|solo (he|e) recibido|me falta|falta(n)? (una|1|la|el|mi|bolsa|producto)|pedido incompleto|llego incompleto|paquetes en vez|en vez de (los )?(3|tres)/.test(
     text
   );
+}
+
+function looksShippingScope(
+  texts: Array<string | null | undefined>,
+  classification?: CaseClassification | null
+): boolean {
+  const text = String(texts.join(' ') || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+  const classifierText = [
+    classification?.family,
+    classification?.subintent,
+    classification?.intent,
+    classification?.category
+  ]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+
+  if (/estado[_ ]?envio|logistica|order[_ ]?status|shipping|tracking|seguimiento/.test(classifierText)) {
+    return true;
+  }
+
+  const shippingContext =
+    /pedido|paquete|envio|entrega|reparto|seguimiento|tracking|transportista/.test(text);
+  const shippingRequest =
+    /no (me )?(ha|han) llegado|no (lo |la |las |los )?he recibido|sigo sin recibir|sin recibir (el|mi) pedido|todavia no (lo |me )?(he|ha|han)|aun no (me |lo )?(ha|han|he)|en reparto|numero de seguimiento|tracking|donde esta (mi|el) pedido|estado de (mi|el) (pedido|envio)|cuando (me )?(llega|llegara|va a llegar)|fecha de entrega/.test(
+      text
+    );
+
+  return shippingContext && shippingRequest;
 }
 
 function toKnowledgeSubscriptionOrderContext(context: SubscriptionOrderContext) {
