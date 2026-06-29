@@ -56,11 +56,30 @@ export type SubscriptionOrderContext = {
   ignoredSubscriptionOrders: IgnoredSubscriptionOrderSummary[];
 };
 
+export type PromoOrderMatchType = 'exact_order_number' | 'recent' | 'none';
+
+// Contexto del pedido para distinguir, ante una queja de "promo 3x2 / pedido
+// incompleto", si la clienta compro la promo de verdad (entitled a la 3a bolsa)
+// o si compro unidades sueltas (no selecciono la promo).
+export type PromoOrderContext = {
+  matched: boolean;
+  matchType: PromoOrderMatchType;
+  // true = el pedido llevaba la promo 3x2 (variante bundle "AHORRA 3X2"/sku #DTOX-3,
+  // o >=3 unidades con descuento de promo aplicado). false = unidades sueltas.
+  boughtPromo3x2: boolean;
+  unitsOrdered: number;
+  promoDiscountTotal: number;
+  orderNumber: string | null;
+  fulfillmentStatus: string | null;
+  processedAt: string | null;
+};
+
 export type CustomerProfile = {
   email: string;
   orderCount: number;
   recentOrders: CustomerOrderSummary[];
   subscriptionOrderContext: SubscriptionOrderContext;
+  promoOrderContext: PromoOrderContext;
 };
 
 export type CustomerProfileLookupInput = {
@@ -100,6 +119,12 @@ export type PlatformOrderRow = {
 type SubscriptionEvidence = {
   isSubscriptionOrder: boolean;
   reasons: string[];
+};
+
+type PromoOrderEvidence = {
+  boughtPromo3x2: boolean;
+  unitsOrdered: number;
+  promoDiscountTotal: number;
 };
 
 type SubscriptionMessageSignals = {
@@ -182,7 +207,8 @@ export async function getCustomerProfile(
       email,
       orderCount: orders.length,
       recentOrders: orders.slice(0, RECENT_ORDER_LIMIT).map(orderRowToSummary),
-      subscriptionOrderContext
+      subscriptionOrderContext,
+      promoOrderContext: buildPromoOrderContext({ orders, orderNumbers, referenceDate })
     };
   } catch {
     return emptyCustomerProfile(email, texts, referenceDate);
@@ -459,6 +485,99 @@ function containsSubscriptionSignal(value: unknown) {
   return /loop|subscription|suscripcion|recarga|selling_plan/.test(text);
 }
 
+// La promo 3x2 de V-Gummies aparece en los pedidos reales de dos formas:
+//  1) variante empaquetada: variant_title "AHORRA 3X2" / sku "#DTOX-3" (1 linea = 3 bolsas).
+//  2) 3x "PACK 1X" (#DTOX-1) en varias lineas sumando 3 + un discount_allocations con
+//     importe de ~1 bolsa (paga 2, lleva 3).
+// Las unidades sueltas (error del cliente) son solo "PACK 1X" a precio completo sin descuento.
+const PROMO_3X2_SKU_RE = /dtox-3(?:x2)?\b/i;
+const PROMO_3X2_VARIANT_RE = /\b3\s*x\s*2\b|ahorra\s*3\s*x\s*2/i;
+
+function getPromoOrderEvidence(order: PlatformOrderRow): PromoOrderEvidence {
+  const raw = asRecord(order.rawJson);
+  let unitsOrdered = 0;
+  let promoDiscountTotal = 0;
+  let hasBundle = false;
+
+  for (const item of asRecordArray(raw.line_items ?? raw.lineItems)) {
+    unitsOrdered += toNumber(item.quantity);
+
+    const sku = String(item.sku ?? '');
+    const variant = String(item.variant_title ?? item.variantTitle ?? '');
+    const title = String(item.title ?? item.name ?? '');
+    if (
+      PROMO_3X2_SKU_RE.test(sku) ||
+      PROMO_3X2_VARIANT_RE.test(variant) ||
+      PROMO_3X2_VARIANT_RE.test(title)
+    ) {
+      hasBundle = true;
+    }
+
+    for (const alloc of asRecordArray(item.discount_allocations ?? item.discountAllocations)) {
+      promoDiscountTotal += toNumber(alloc.amount);
+    }
+  }
+
+  // Ante ambiguedad, errar hacia "compro la promo" (-> incidencia almacen, que un
+  // humano revisa) en vez de acusar a la clienta de error de compra.
+  const boughtPromo3x2 = hasBundle || (unitsOrdered >= 3 && promoDiscountTotal > 0);
+
+  return { boughtPromo3x2, unitsOrdered, promoDiscountTotal: round2(promoDiscountTotal) };
+}
+
+function buildPromoOrderContext(input: {
+  orders: PlatformOrderRow[];
+  orderNumbers: string[];
+  referenceDate: Date;
+}): PromoOrderContext {
+  const orderNumberSet = new Set(input.orderNumbers.map(normalizeOrderCandidate).filter(Boolean));
+  const activeOrders = input.orders.filter((order) => !isCancelledOrTestOrder(order));
+
+  let chosen: PlatformOrderRow | null = null;
+  let matchType: PromoOrderMatchType = 'none';
+
+  if (orderNumberSet.size) {
+    const exactMatches = activeOrders.filter((order) => orderMatchesAnyCandidate(order, orderNumberSet));
+    chosen = newestOrder(exactMatches);
+    if (chosen) matchType = 'exact_order_number';
+  }
+
+  if (!chosen) {
+    const recent = activeOrders.filter((order) =>
+      isWithinLookback(order.processedAt, input.referenceDate, RECEIVED_LOOKBACK_DAYS)
+    );
+    chosen = newestOrder(recent);
+    if (chosen) matchType = 'recent';
+  }
+
+  if (!chosen) return emptyPromoOrderContext();
+
+  const evidence = getPromoOrderEvidence(chosen);
+  return {
+    matched: true,
+    matchType,
+    boughtPromo3x2: evidence.boughtPromo3x2,
+    unitsOrdered: evidence.unitsOrdered,
+    promoDiscountTotal: evidence.promoDiscountTotal,
+    orderNumber: chosen.orderNumber || chosen.externalOrderId,
+    fulfillmentStatus: chosen.fulfillmentStatus,
+    processedAt: chosen.processedAt.toISOString()
+  };
+}
+
+function emptyPromoOrderContext(): PromoOrderContext {
+  return {
+    matched: false,
+    matchType: 'none',
+    boughtPromo3x2: false,
+    unitsOrdered: 0,
+    promoDiscountTotal: 0,
+    orderNumber: null,
+    fulfillmentStatus: null,
+    processedAt: null
+  };
+}
+
 function getSubscriptionMessageSignals(texts: Array<string | null | undefined>): SubscriptionMessageSignals {
   const text = normalizeKey(texts.join(' ')).replace(/_/g, ' ');
 
@@ -489,6 +608,11 @@ function emptyCustomerProfile(
       orders: [],
       orderNumbers: extractOrderNumberCandidates(texts),
       texts,
+      referenceDate
+    }),
+    promoOrderContext: buildPromoOrderContext({
+      orders: [],
+      orderNumbers: extractOrderNumberCandidates(texts),
       referenceDate
     })
   };
@@ -566,6 +690,15 @@ function asRecord(value: unknown): Record<string, unknown> {
 function asRecordArray(value: unknown): Array<Record<string, unknown>> {
   if (!Array.isArray(value)) return [];
   return value.map(asRecord);
+}
+
+function toNumber(value: unknown): number {
+  const parsed = typeof value === 'number' ? value : Number.parseFloat(String(value ?? ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function round2(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function decimalToString(value: unknown) {

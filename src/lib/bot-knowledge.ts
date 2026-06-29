@@ -3,6 +3,7 @@ import approvedReplyMemorySeed from '../data/approved-reply-memory.seed.json';
 import {
   extractOrderNumberCandidates,
   getCustomerProfile,
+  type PromoOrderContext,
   type SubscriptionOrderContext
 } from './customer-profile';
 import { fetchLiveSubscriptionOrders } from './shopify-live-lookup';
@@ -71,10 +72,12 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
 
   // Solo activa la consulta Shopify EN VIVO (fail-open, dentro de getCustomerProfile
   // y solo si la BD no trae pedido de suscripcion relevante) cuando el caso parece de
-  // ambito suscripcion/pedido; asi el camino comun no anade latencia ni llamadas.
-  const liveOrderFetcher = looksSubscriptionScope(texts, input.classification)
-    ? fetchLiveSubscriptionOrders
-    : undefined;
+  // ambito suscripcion/pedido o una queja de promo 3x2 / pedido incompleto; asi el
+  // camino comun no anade latencia ni llamadas.
+  const liveOrderFetcher =
+    looksSubscriptionScope(texts, input.classification) || looksPromoScope(texts)
+      ? fetchLiveSubscriptionOrders
+      : undefined;
 
   const [customerProfile, previousTickets, approvedResponseCandidates] = await Promise.all([
     getCustomerProfile(
@@ -95,6 +98,7 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
     subscription_order_context: toKnowledgeSubscriptionOrderContext(
       customerProfile.subscriptionOrderContext
     ),
+    promo_order_context: toKnowledgePromoOrderContext(customerProfile.promoOrderContext),
     previous_tickets: previousTickets,
     approved_response_candidates: approvedResponseCandidates,
     retrieval: {
@@ -125,6 +129,19 @@ function looksSubscriptionScope(
   );
 }
 
+function looksPromoScope(texts: Array<string | null | undefined>): boolean {
+  const text = String(texts.join(' ') || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+  // Queja de promo 3x2 / pedido incompleto: dispara el lookup en vivo para verificar
+  // si el pedido llevaba la promo (error de almacen) o eran unidades sueltas (error
+  // del cliente). Acotado para no llamar a Shopify en menciones genericas de "promo".
+  return /\b3\s*x\s*2\b|3 por 2|2\s*\+\s*1|solo (me )?(han |me )?lleg|solo (he|e) recibido|me falta|falta(n)? (una|1|la|el|mi|bolsa|producto)|pedido incompleto|llego incompleto|paquetes en vez|en vez de (los )?(3|tres)/.test(
+    text
+  );
+}
+
 function toKnowledgeSubscriptionOrderContext(context: SubscriptionOrderContext) {
   return {
     has_relevant_subscription_order: context.hasRelevantSubscriptionOrder,
@@ -135,6 +152,19 @@ function toKnowledgeSubscriptionOrderContext(context: SubscriptionOrderContext) 
     received_lookback_days: context.receivedLookbackDays,
     latest_subscription_order: context.latestSubscriptionOrder,
     ignored_subscription_orders: context.ignoredSubscriptionOrders
+  };
+}
+
+function toKnowledgePromoOrderContext(context: PromoOrderContext) {
+  return {
+    matched: context.matched,
+    match_type: context.matchType,
+    bought_promo_3x2: context.boughtPromo3x2,
+    units_ordered: context.unitsOrdered,
+    promo_discount_total: context.promoDiscountTotal,
+    order_number: context.orderNumber,
+    fulfillment_status: context.fulfillmentStatus,
+    processed_at: context.processedAt
   };
 }
 

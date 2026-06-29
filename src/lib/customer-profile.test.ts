@@ -22,6 +22,17 @@ const NO_RELEVANT_SUBSCRIPTION_CONTEXT = {
   ignoredSubscriptionOrders: []
 };
 
+const EMPTY_PROMO_CONTEXT = {
+  matched: false,
+  matchType: 'none',
+  boughtPromo3x2: false,
+  unitsOrdered: 0,
+  promoDiscountTotal: 0,
+  orderNumber: null,
+  fulfillmentStatus: null,
+  processedAt: null
+};
+
 function shopifyOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: 'order-1',
@@ -115,7 +126,8 @@ describe('getCustomerProfileByEmail', () => {
       email: '',
       orderCount: 0,
       recentOrders: [],
-      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT,
+      promoOrderContext: EMPTY_PROMO_CONTEXT
     });
     expect(count).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
@@ -130,7 +142,8 @@ describe('getCustomerProfileByEmail', () => {
       email: 'lola@example.com',
       orderCount: 1,
       recentOrders: [expectedOrderSummary({ id: 'order-1', orderNumber: '#1006' })],
-      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT,
+      promoOrderContext: expect.any(Object)
     });
 
     expect(count).not.toHaveBeenCalled();
@@ -194,7 +207,13 @@ describe('getCustomerProfileByEmail', () => {
           totalPrice: '59.90'
         })
       ],
-      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT,
+      promoOrderContext: expect.objectContaining({
+        matched: true,
+        matchType: 'exact_order_number',
+        boughtPromo3x2: false,
+        orderNumber: '#45405'
+      })
     });
 
     expect(findMany).toHaveBeenNthCalledWith(
@@ -302,7 +321,8 @@ describe('getCustomerProfileByEmail', () => {
       email: 'cliente@example.com',
       orderCount: 0,
       recentOrders: [],
-      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT
+      subscriptionOrderContext: NO_RELEVANT_SUBSCRIPTION_CONTEXT,
+      promoOrderContext: EMPTY_PROMO_CONTEXT
     });
   });
 
@@ -589,6 +609,124 @@ describe('subscription order evidence', () => {
     // Sin evidencia de suscripcion, el pedido reciente no convierte el caso en generated_*.
     expect(profile.subscriptionOrderContext.hasRelevantSubscriptionOrder).toBe(false);
     expect(profile.subscriptionOrderContext.state).toBe('not_generated_detected');
+  });
+});
+
+// Cobertura del promoOrderContext (incidencia 3x2 / pedido incompleto): distingue
+// si la clienta compro la promo (entitled a la 3a bolsa -> error de almacen) o
+// unidades sueltas (error del cliente -> oficina envia la extra).
+describe('promo order context (3x2)', () => {
+  beforeEach(() => {
+    count.mockReset();
+    findMany.mockReset();
+  });
+
+  it('flags boughtPromo3x2 for the AHORRA 3X2 bundle variant (#DTOX-3)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([
+      shopifyOrder({
+        id: 'promo-bundle',
+        orderNumber: '#51142',
+        externalOrderId: '51142',
+        processedAt: new Date('2026-06-24T09:00:00.000Z'),
+        rawJson: {
+          line_items: [
+            {
+              title: 'V-Gummies | Gominolas Vinagre de Manzana',
+              variant_title: 'AHORRA 3X2',
+              sku: '#DTOX-3',
+              quantity: 1,
+              price: '49.95',
+              discount_allocations: [{ amount: '13.64' }]
+            }
+          ]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['pedi el 3x2 y solo me llegaron dos bolsas, pedido #51142'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.promoOrderContext).toEqual(
+      expect.objectContaining({
+        matched: true,
+        matchType: 'exact_order_number',
+        boughtPromo3x2: true,
+        orderNumber: '#51142'
+      })
+    );
+  });
+
+  it('flags boughtPromo3x2 for 3x PACK 1X with a promo discount (paga 2, lleva 3)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([
+      shopifyOrder({
+        id: 'promo-singles',
+        orderNumber: '#51139',
+        externalOrderId: '51139',
+        processedAt: new Date('2026-06-24T09:00:00.000Z'),
+        rawJson: {
+          line_items: [
+            { variant_title: 'PACK 1X', sku: '#DTOX-1', quantity: 1, price: '24.99', discount_allocations: [{ amount: '24.99' }] },
+            { variant_title: 'PACK 1X', sku: '#DTOX-1', quantity: 2, price: '24.99', discount_allocations: [{ amount: '0.00' }] }
+          ]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['solo me llegaron dos del 3x2, pedido #51139'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.promoOrderContext).toEqual(
+      expect.objectContaining({ matched: true, boughtPromo3x2: true, unitsOrdered: 3, promoDiscountTotal: 24.99 })
+    );
+  });
+
+  it('does NOT flag the promo for individual units at full price (error del cliente)', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([
+      shopifyOrder({
+        id: 'singles-only',
+        orderNumber: '#51138',
+        externalOrderId: '51138',
+        processedAt: new Date('2026-06-24T09:00:00.000Z'),
+        rawJson: {
+          line_items: [
+            { variant_title: 'PACK 1X', sku: '#DTOX-1', quantity: 2, price: '24.99', discount_allocations: [] }
+          ]
+        }
+      })
+    ]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['pedi el 3x2 y solo me llegaron dos, pedido #51138'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.promoOrderContext).toEqual(
+      expect.objectContaining({ matched: true, boughtPromo3x2: false, unitsOrdered: 2, promoDiscountTotal: 0 })
+    );
+  });
+
+  it('returns matched=false when the order cannot be found', async () => {
+    const { getCustomerProfile } = await import('./customer-profile');
+    findMany.mockResolvedValue([]);
+
+    const profile = await getCustomerProfile({
+      email: 'cliente@example.com',
+      texts: ['pedi el 3x2 y solo me llegaron dos'],
+      referenceDate: '2026-06-25T12:00:00.000Z'
+    });
+
+    expect(profile.promoOrderContext.matched).toBe(false);
+    expect(profile.promoOrderContext.boughtPromo3x2).toBe(false);
   });
 });
 
