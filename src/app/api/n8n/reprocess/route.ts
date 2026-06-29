@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { env } from '@/lib/env';
 import { db } from '@/lib/db';
 import { ingestTicket, ingestTicketSchema } from '@/lib/tickets';
+import { normalizeReply } from '@/lib/status';
 
 // Re-procesa tickets EXISTENTES por el flujo del agente y actualiza su borrador +
 // etiqueta (routed_template_id / route_source), sin duplicar (clave
@@ -18,8 +19,11 @@ const SENTIMENTS = new Set(['molesto', 'neutral', 'contento']);
 const reprocessSchema = z
   .object({
     external_message_id: z.string().min(1).optional(),
-    email: z.string().email().optional(),
-    limit: z.number().int().min(1).max(20).optional().default(1),
+    // email admite uno o varios (lista) para reprocesar de golpe.
+    email: z.union([z.string().email(), z.array(z.string().email()).min(1)]).optional(),
+    limit: z.number().int().min(1).max(200).optional().default(1),
+    // all: ignora limit y reprocesa TODOS los tickets del/los email(s).
+    all: z.boolean().optional().default(false),
     dry_run: z.boolean().optional().default(false)
   })
   .refine((v) => v.external_message_id || v.email, {
@@ -40,7 +44,8 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const { external_message_id, email, limit, dry_run } = parsed.data;
+  const { external_message_id, email, limit, all, dry_run } = parsed.data;
+  const emails = Array.isArray(email) ? email : email ? [email] : [];
 
   const agentUrl =
     process.env.N8N_SHOPIFY_SUPPORT_WEBHOOK_URL || process.env.N8N_AGENT_WEBHOOK_URL || '';
@@ -60,9 +65,9 @@ export async function POST(request: Request) {
         .findUnique({ where: { externalMessageId: external_message_id } })
         .then((t) => (t ? [t] : []))
     : await db.ticket.findMany({
-        where: { customerEmail: { equals: email as string, mode: 'insensitive' } },
+        where: { OR: emails.map((e) => ({ customerEmail: { equals: e, mode: 'insensitive' as const } })) },
         orderBy: { receivedAt: 'desc' },
-        take: limit
+        ...(all ? {} : { take: limit })
       });
 
   if (!tickets.length) {
@@ -111,8 +116,22 @@ export async function POST(request: Request) {
       reply_preview: reply.slice(0, 100)
     };
 
+    // ¿El nuevo borrador coincide con lo que envio el humano? (solo si hay finalReply)
+    const finalReplyPresent = Boolean(ticket.finalReply && ticket.finalReply.trim());
+    const replyMatchesHuman = finalReplyPresent
+      ? normalizeReply(reply) === normalizeReply(ticket.finalReply || '')
+      : null;
+
     if (dry_run) {
-      results.push({ external_message_id: ticket.externalMessageId, ok: true, dry_run: true, before, after });
+      results.push({
+        external_message_id: ticket.externalMessageId,
+        ok: true,
+        dry_run: true,
+        before,
+        after,
+        final_reply_present: finalReplyPresent,
+        reply_matches_human: replyMatchesHuman
+      });
       continue;
     }
 
@@ -155,7 +174,9 @@ export async function POST(request: Request) {
       applied: changed,
       note: changed ? 'updated' : 'skipped_terminal_status',
       before,
-      after: { routedTemplateId: updated.routedTemplateId, routeSource: updated.routeSource }
+      after: { routedTemplateId: updated.routedTemplateId, routeSource: updated.routeSource, reply_preview: reply.slice(0, 100) },
+      final_reply_present: finalReplyPresent,
+      reply_matches_human: replyMatchesHuman
     });
   }
 
