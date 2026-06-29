@@ -28,7 +28,7 @@ export async function GET(request: Request) {
   const { since, until } = monthQueryRange(month);
   const needsFees = getLedgerConfig(platform).rows.some((row) => row.compute?.base === 'fee');
 
-  const [orders, fees, entries, settings] = await Promise.all([
+  const [orders, entries, settings] = await Promise.all([
     db.platformOrder.findMany({
       where: {
         platform,
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
         financialStatus: { in: SALE_FINANCIAL_STATUSES }
       },
       select: {
+        externalOrderId: true,
         processedAt: true,
         totalUnits: true,
         subtotal: true,
@@ -46,12 +47,6 @@ export async function GET(request: Request) {
         totalRefunded: true
       }
     }),
-    needsFees
-      ? db.platformFinancialTransaction.findMany({
-          where: { platform, postedAt: { gte: since, lte: until } },
-          select: { postedAt: true, transactionType: true, feeAmount: true }
-        })
-      : Promise.resolve([] as { postedAt: Date; transactionType: string | null; feeAmount: unknown }[]),
     db.financialLedgerEntry.findMany({
       where: { platform, month },
       select: { periodLabel: true, lineKey: true, amount: true }
@@ -59,15 +54,32 @@ export async function GET(request: Request) {
     db.financialSetting.findMany({ where: { platform }, select: { key: true, value: true } })
   ]);
 
+  // Fees (comision/logistica AMZ): se fechan por la FECHA DE COMPRA del pedido al que pertenecen
+  // (uniendo por externalOrderId), no por la fecha de liquidacion, para que caigan en el mismo
+  // sub-periodo que la venta. Ventana de postedAt amplia para cubrir el lag de settlement.
+  let fees: { postedAt: Date; transactionType: string | null; amount: unknown }[] = [];
+  if (needsFees && orders.length) {
+    const purchaseDateByOrderId = new Map(orders.map((order) => [order.externalOrderId, order.processedAt]));
+    const feeUntil = new Date(until);
+    feeUntil.setUTCDate(feeUntil.getUTCDate() + 90);
+    const transactions = await db.platformFinancialTransaction.findMany({
+      where: { platform, postedAt: { gte: since, lte: feeUntil } },
+      select: { externalOrderId: true, transactionType: true, feeAmount: true, postedAt: true }
+    });
+    fees = transactions.flatMap((transaction) => {
+      const purchaseDate = transaction.externalOrderId
+        ? purchaseDateByOrderId.get(transaction.externalOrderId)
+        : undefined;
+      if (!purchaseDate) return [];
+      return [{ postedAt: purchaseDate, transactionType: transaction.transactionType, amount: transaction.feeAmount }];
+    });
+  }
+
   const matrix = buildLedgerMatrix({
     platform,
     month,
     orders,
-    fees: fees.map((fee) => ({
-      postedAt: fee.postedAt,
-      transactionType: fee.transactionType,
-      amount: fee.feeAmount
-    })),
+    fees,
     rates: resolveRates(platform, settings),
     entries
   });

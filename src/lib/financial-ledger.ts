@@ -58,6 +58,10 @@ export type LedgerRateConfig = { key: string; label: string; suffix: string; def
 export type LedgerPlatformConfig = {
   rows: LedgerRowConfig[];
   rates: LedgerRateConfig[];
+  // Si el subtotal ya lleva el IVA dentro (Shopify/TikTok con precios IVA-incluido) restamos
+  // total_tax para la venta neta. En Amazon el item-price del informe es SIN IVA (el IVA va
+  // aparte), asi que no se resta y la facturacion con IVA se obtiene sumandolo.
+  taxInSubtotal: boolean;
 };
 
 // ----------------------------- Config por plataforma -----------------------------
@@ -87,7 +91,8 @@ const SHOPIFY_CONFIG: LedgerPlatformConfig = {
     { key: 'product_cost_unit', label: 'Coste producto/ud', suffix: '€/ud', default: 3.2 },
     { key: 'gift_cost_unit', label: 'Coste regalos/ud', suffix: '€/ud', default: 0.8 },
     { key: 'md_cost_unit', label: 'Coste M&D/ud', suffix: '€/ud', default: 1.5 }
-  ]
+  ],
+  taxInSubtotal: true
 };
 
 const AMAZON_CONFIG: LedgerPlatformConfig = {
@@ -106,7 +111,8 @@ const AMAZON_CONFIG: LedgerPlatformConfig = {
   ],
   rates: [
     { key: 'product_cost_unit', label: 'Coste producto/ud', suffix: '€/ud', default: 4.7 }
-  ]
+  ],
+  taxInSubtotal: false
 };
 
 const TIKTOK_CONFIG: LedgerPlatformConfig = {
@@ -130,7 +136,8 @@ const TIKTOK_CONFIG: LedgerPlatformConfig = {
     { key: 'md_cost_unit', label: 'Coste M&D/ud', suffix: '€/ud', default: 1.5 },
     { key: 'affiliate_pct', label: 'Afiliados', suffix: '% facturación', default: 15 },
     { key: 'commission_pct', label: 'Comisión TT', suffix: '% facturación', default: 9 }
-  ]
+  ],
+  taxInSubtotal: true
 };
 
 export const LEDGER_CONFIG: Record<LedgerPlatform, LedgerPlatformConfig> = {
@@ -259,9 +266,18 @@ export function buildLedgerMatrix(input: {
     const bucket = base[index];
     bucket.units += order.totalUnits;
     bucket.orders += 1;
-    const gross = toNumber(order.subtotal) + toNumber(order.totalShipping);
-    bucket.gross += gross;
-    bucket.net += gross - toNumber(order.totalTax) - toNumber(order.totalRefunded);
+    const subtotalShipping = toNumber(order.subtotal) + toNumber(order.totalShipping);
+    const tax = toNumber(order.totalTax);
+    const refund = toNumber(order.totalRefunded);
+    if (config.taxInSubtotal) {
+      // Shopify/TikTok: el subtotal ya incluye IVA.
+      bucket.gross += subtotalShipping;
+      bucket.net += subtotalShipping - tax - refund;
+    } else {
+      // Amazon: el subtotal es sin IVA; la facturacion con IVA lo suma.
+      bucket.gross += subtotalShipping + tax;
+      bucket.net += subtotalShipping - refund;
+    }
   }
 
   for (const fee of input.fees ?? []) {
