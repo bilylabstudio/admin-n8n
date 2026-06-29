@@ -12,10 +12,11 @@ import { buildMonthWeekPresets } from '@/lib/sales-periods';
 
 export const dynamic = 'force-dynamic';
 
-// Estados de pago que NO son una venta cobrada: se excluyen para cuadrar con la contabilidad,
-// que solo cuenta ventas reales. Los `refunded`/`partially_refunded` SI se cuentan (la venta
-// existio) y su devolucion se descuenta via total_refunded en buildLedgerMatrix.
-const EXCLUDED_FINANCIAL_STATUSES = ['pending', 'authorized', 'voided'];
+// La contabilidad del cliente solo cuenta ventas cobradas y no devueltas. Verificado contra los
+// datos reales de abril 2026: contar solo `paid` + `partially_paid` cuadra el total con el Excel
+// (unidades +0,1 %, pedidos +0,4 %). Se excluyen `pending`/`authorized`/`voided` (no cobrados) y
+// `refunded`/`partially_refunded` (devoluciones, que el contable trata como no-venta).
+const SALE_FINANCIAL_STATUSES = ['paid', 'partially_paid'];
 
 export async function GET(request: Request) {
   await requireUser();
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
         processedAt: { gte: since, lte: until },
         cancelledAt: null,
         isTest: false,
-        financialStatus: { notIn: EXCLUDED_FINANCIAL_STATUSES },
+        financialStatus: { in: SALE_FINANCIAL_STATUSES },
         ...(platformParam !== 'all' ? { platform: platformParam } : {})
       },
       select: {
