@@ -19,6 +19,8 @@ type ShopifyRefund = {
 
 type ShopifyLineItem = {
   quantity?: number | null;
+  // Cantidad neta tras devoluciones/ediciones (Shopify la actualiza al reembolsar lineas).
+  current_quantity?: number | null;
 };
 
 type ShopifyAddress = {
@@ -177,8 +179,10 @@ function asMoney(value: string | number | null | undefined): string {
 function mapOrder(order: ShopifyOrder, includeRawJson: boolean): PlatformOrderInput {
   if (!order.id) throw new Error('Shopify order missing id');
 
+  // Unidades NETAS (current_quantity) para cuadrar con Shopify Analytics / la contabilidad,
+  // que descuenta lo devuelto. Fallback a quantity si la API no trae current_quantity.
   const totalUnits = (order.line_items || []).reduce(
-    (sum, lineItem) => sum + (lineItem.quantity || 0),
+    (sum, lineItem) => sum + (lineItem.current_quantity ?? lineItem.quantity ?? 0),
     0
   );
   const totalRefunded = (order.refunds || [])
