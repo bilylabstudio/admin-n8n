@@ -943,7 +943,6 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
                           {ticket.templateLabel ? <em>{ticket.templateLabel.label}</em> : null}
                           {ticket.category ? <em>{ticket.category}</em> : null}
                           {ticket.intent ? <em>{ticket.intent}</em> : null}
-                          {ticket.riskFlags && !ticket.escalationRecommended ? <b>Revisar riesgo</b> : null}
                         </span>
                       </button>
                     </div>

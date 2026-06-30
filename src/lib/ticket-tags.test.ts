@@ -15,6 +15,18 @@ describe('getTicketTags', () => {
     expect(getTicketTags({ ...baseTicket, escalationRecommended: true }).map((tag) => tag.id)).toEqual(['escalate']);
   });
 
+  it('returns Escalar when the bot flags requires_review / human_review (reasoned reply)', () => {
+    expect(
+      getTicketTags({ ...baseTicket, riskFlags: 'requires_review,human_review' }).map((tag) => tag.id)
+    ).toContain('escalate');
+  });
+
+  it('returns Escalar for the reasoned_reply route even without escalationRecommended', () => {
+    expect(
+      getTicketTags({ ...baseTicket, riskFlags: 'human_review', intent: 'reasoned_reply' }).map((tag) => tag.id)
+    ).toContain('escalate');
+  });
+
   it('does not escalate only because the customer asks to review something', () => {
     expect(
       getTicketTags({

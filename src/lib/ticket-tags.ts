@@ -80,7 +80,22 @@ const carrierIncidentStrongTextPatterns = [
   'entregado y no lo he recibido'
 ];
 
-const escalationPatterns = ['riesgo', 'humana', 'humano', 'manual', 'escalar', 'revisar'];
+// Incluye los tokens que el bot pone en riskFlags/route cuando un caso no encaja en
+// plantilla y debe revisarse (camino de respuesta razonada): requires_review,
+// human_review y revision. Asi un ticket marcado para revision SIEMPRE muestra el
+// chip "Escalar" de forma consistente en lista, conversacion y detalle.
+const escalationPatterns = [
+  'riesgo',
+  'humana',
+  'humano',
+  'manual',
+  'escalar',
+  'revisar',
+  'revision',
+  'requires_review',
+  'human_review',
+  'reasoned_reply'
+];
 
 const refundPatterns = [
   'devolucion',
