@@ -1170,15 +1170,10 @@ function ThreadPane({
                       type="button"
                       onClick={() => toggleReplyDiff(message.id)}
                     >
-                      {isReplyDiffOpen ? 'Ocultar comparacion IA' : 'Ver cambios respecto a IA'}
+                      {isReplyDiffOpen ? 'Ocultar mensaje IA' : 'Ver mensaje original de IA'}
                       <span aria-hidden="true">{isReplyDiffOpen ? '^' : 'v'}</span>
                     </button>
-                    {isReplyDiffOpen ? (
-                      <ReplyDiffView
-                        iaDraft={selectedTicket.aiReply}
-                        sent={selectedTicket.finalReply || message.text}
-                      />
-                    ) : null}
+                    {isReplyDiffOpen ? <ReplyDiffView iaDraft={selectedTicket.aiReply} /> : null}
                   </>
                 ) : null}
               </div>
@@ -1430,12 +1425,10 @@ function ConversationPane({
                         type="button"
                         onClick={() => toggleReplyDiff(ticket.id)}
                       >
-                        {isReplyDiffOpen ? 'Ocultar comparacion IA' : 'Ver cambios respecto a IA'}
+                        {isReplyDiffOpen ? 'Ocultar mensaje IA' : 'Ver mensaje original de IA'}
                         <span aria-hidden="true">{isReplyDiffOpen ? '^' : 'v'}</span>
                       </button>
-                      {isReplyDiffOpen ? (
-                        <ReplyDiffView iaDraft={ticket.aiReply} sent={adminText} />
-                      ) : null}
+                      {isReplyDiffOpen ? <ReplyDiffView iaDraft={ticket.aiReply} /> : null}
                     </>
                   ) : null}
                 </div>

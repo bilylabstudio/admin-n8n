@@ -1476,50 +1476,12 @@ button {
   padding: 9px;
 }
 
-.reply-diff-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.reply-diff-legend-item {
-  border-radius: 999px;
-  padding: 3px 7px;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.reply-diff-legend-item.added {
-  background: rgba(46, 160, 67, 0.14);
-  color: #1f7a33;
-}
-
-.reply-diff-legend-item.removed {
-  background: var(--error-bg);
-  color: var(--error-red);
-}
-
-.reply-diff-body {
+.reply-ai-draft-body {
+  margin: 0;
   color: var(--ink-soft);
   font-size: 13px;
   line-height: 1.55;
   white-space: pre-wrap;
-}
-
-.reply-diff-segment {
-  border-radius: 3px;
-}
-
-.reply-diff-segment.diff-added {
-  background: rgba(46, 160, 67, 0.16);
-  color: #1f7a33;
-}
-
-.reply-diff-segment.diff-removed {
-  background: rgba(164, 61, 53, 0.14);
-  color: var(--error-red);
-  text-decoration: line-through;
-  text-decoration-thickness: 1.5px;
 }
 
 .conv-editor {
