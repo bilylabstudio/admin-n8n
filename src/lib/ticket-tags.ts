@@ -97,78 +97,43 @@ const escalationPatterns = [
   'reasoned_reply'
 ];
 
-const refundPatterns = [
-  'devolucion',
-  'devolver',
-  'reembolso',
-  'rembolso',
-  'cancelar',
-  'cancelacion',
-  'anular',
-  'anulacion',
-  'baja',
-  'suscripcion',
-  'dinero',
-  'formulario'
-];
+// Chips de intencion (Devolucion / Problema envio / Problema producto) derivados de la
+// CLASIFICACION del bot (category/intent), NO del texto crudo del cliente. Asi un
+// mensaje que menciona "suscripcion" o "me funcionan" ya no dispara chips si la IA
+// entendio otra intencion (caso Rocio). El texto del cliente solo se usa para la
+// incidencia de transporte, que necesita senales explicitas del propio mensaje.
+function isRefundClassification(category: string, intent: string) {
+  return (
+    ['refund_status', 'return', 'subscription_cancel'].includes(intent) ||
+    category.includes('devolucion') ||
+    category.includes('reclamo') ||
+    category.includes('reembolso')
+  );
+}
 
-const shippingPatterns = [
-  'envio',
-  'enviar',
-  'mensajeria',
-  'transportista',
-  'seguimiento',
-  'tracking',
-  'tipsa',
-  'nacex',
-  'correos express',
-  'no recibido',
-  'no he recibido',
-  'no ha llegado',
-  'no me ha llegado',
-  'no me han llegado',
-  'no llega',
-  'no llegan',
-  'todavia no me',
-  'aun no me',
-  'donde esta',
-  'cuando llega',
-  'direccion incompleta',
-  'direccion de envio',
-  'falta el numero',
-  'numero de mi casa',
-  'order_status',
-  'logistica'
-];
+function isShippingClassification(category: string, intent: string) {
+  return (
+    intent === 'order_status' ||
+    category.includes('logistica') ||
+    category.includes('envio') ||
+    category.includes('transporte')
+  );
+}
 
-const productPatterns = [
-  'producto',
-  'gomitas',
-  'gominolas',
-  'dosis',
-  'tomar',
-  'tomarlas',
-  'efectos',
-  'resultados',
-  'salud',
-  'ingredientes',
-  'no noto',
-  'no he notado',
-  'me funciona',
-  'me funcionan',
-  'diarrea',
-  'hinchazon',
-  'digestion',
-  'diuretico',
-  'retencion de liquidos',
-  'cuanto tiempo'
-];
+function isProductClassification(category: string, intent: string) {
+  return intent === 'product' || category.startsWith('producto');
+}
 
 export function getTicketTags(ticket: TaggableTicket): TicketTag[] {
-  const haystack = normalize(
+  // Solo campos estructurados que pone el bot; nunca el texto crudo del cliente.
+  const riskHaystack = normalize([ticket.category, ticket.intent, ticket.riskFlags].join(' '));
+  // El texto del cliente se usa exclusivamente para detectar incidencias de transporte,
+  // que requieren senales explicitas del propio mensaje (paquete perdido, ausente, ...).
+  const carrierText = normalize(
     [ticket.subject, ticket.originalText, ticket.category, ticket.intent, ticket.riskFlags].join(' ')
   );
-  const riskHaystack = normalize([ticket.category, ticket.intent, ticket.riskFlags].join(' '));
+  const category = normalize(ticket.category ?? '');
+  const intent = normalize(ticket.intent ?? '');
   const ids: TicketTagId[] = [];
 
   if (includesAny(riskHaystack, warehousePatterns)) {
@@ -179,7 +144,9 @@ export function getTicketTags(ticket: TaggableTicket): TicketTag[] {
     ids.push('office_3x2');
   }
 
-  if (includesAny(riskHaystack, carrierIncidentRiskPatterns) || hasCarrierIncidentText(haystack)) {
+  const carrierIncident =
+    includesAny(riskHaystack, carrierIncidentRiskPatterns) || hasCarrierIncidentText(carrierText);
+  if (carrierIncident) {
     ids.push('carrier_incident');
   }
 
@@ -187,15 +154,16 @@ export function getTicketTags(ticket: TaggableTicket): TicketTag[] {
     ids.push('escalate');
   }
 
-  if (includesAny(haystack, refundPatterns)) {
+  if (isRefundClassification(category, intent)) {
     ids.push('refund');
   }
 
-  if (includesAny(haystack, shippingPatterns)) {
+  // Una incidencia de transporte es tambien, por definicion, un problema de envio.
+  if (isShippingClassification(category, intent) || carrierIncident) {
     ids.push('shipping');
   }
 
-  if (includesAny(haystack, productPatterns)) {
+  if (isProductClassification(category, intent)) {
     ids.push('product');
   }
 

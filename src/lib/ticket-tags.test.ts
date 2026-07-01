@@ -36,44 +36,27 @@ describe('getTicketTags', () => {
     ).not.toContain('escalate');
   });
 
-  it('returns Devolucion for refund and cancellation language', () => {
-    expect(
-      getTicketTags({
-        ...baseTicket,
-        subject: 'Quiero cancelar mi pedido',
-        originalText: 'Necesito una devolucion o reembolso del dinero'
-      }).map((tag) => tag.id)
-    ).toContain('refund');
+  // ====== Chips de intencion derivados de la CLASIFICACION del bot, no del texto ======
+
+  it('returns Devolucion from the bot intent (refund_status / return / subscription_cancel)', () => {
+    expect(getTicketTags({ ...baseTicket, intent: 'refund_status' }).map((t) => t.id)).toContain('refund');
+    expect(getTicketTags({ ...baseTicket, intent: 'return' }).map((t) => t.id)).toContain('refund');
+    expect(getTicketTags({ ...baseTicket, intent: 'subscription_cancel' }).map((t) => t.id)).toEqual(['refund']);
   });
 
-  it('returns Problema envio for shipping and tracking language', () => {
+  it('returns Devolucion from the bot category (Devolucion/Reclamo)', () => {
+    expect(getTicketTags({ ...baseTicket, category: 'Devolucion/Reclamo' }).map((t) => t.id)).toContain('refund');
+  });
+
+  it('returns Problema envio from the bot classification (order_status / Logistica)', () => {
     expect(
-      getTicketTags({
-        ...baseTicket,
-        category: 'Logistica de Web',
-        intent: 'order_status',
-        originalText: 'No he recibido el pedido y no llega el seguimiento de Tipsa'
-      }).map((tag) => tag.id)
+      getTicketTags({ ...baseTicket, category: 'Logistica de Web', intent: 'order_status' }).map((t) => t.id)
     ).toContain('shipping');
   });
 
-  it('returns Problema envio for delayed delivery language from the examples', () => {
-    expect(
-      getTicketTags({
-        ...baseTicket,
-        originalText: 'Todavia no me han llegado, la empresa de mensajeria Tipsa dice que llegan el lunes'
-      }).map((tag) => tag.id)
-    ).toContain('shipping');
-  });
-
-  it('returns Problema producto for dosage and results language', () => {
-    expect(
-      getTicketTags({
-        ...baseTicket,
-        category: 'Producto/Salud',
-        originalText: 'No noto efectos y quiero saber la dosis para tomar las gomitas'
-      }).map((tag) => tag.id)
-    ).toContain('product');
+  it('returns Problema producto from the bot classification (product / Producto/*)', () => {
+    expect(getTicketTags({ ...baseTicket, intent: 'product' }).map((t) => t.id)).toContain('product');
+    expect(getTicketTags({ ...baseTicket, category: 'Producto/Stock' }).map((t) => t.id)).toContain('product');
   });
 
   it('can return multiple tags in stable order', () => {
@@ -81,7 +64,8 @@ describe('getTicketTags', () => {
       getTicketTags({
         ...baseTicket,
         escalationRecommended: true,
-        originalText: 'No he recibido mi pedido y quiero cancelar'
+        category: 'Devolucion/Reclamo',
+        intent: 'order_status'
       }).map((tag) => tag.id)
     ).toEqual(['escalate', 'refund', 'shipping']);
   });
@@ -89,6 +73,31 @@ describe('getTicketTags', () => {
   it('returns an empty list when there are no matches', () => {
     expect(getTicketTags({ ...baseTicket, originalText: 'Muchas gracias por la informacion' })).toEqual([]);
   });
+
+  // ====== La clave del cambio: el texto crudo del cliente NO dispara chips ======
+
+  it('does NOT derive intent chips from raw customer text without a bot classification', () => {
+    const ids = getTicketTags({
+      ...baseTicket,
+      subject: 'devolucion',
+      originalText: 'devolucion reembolso no me ha llegado no noto efectos gomitas'
+    }).map((t) => t.id);
+    expect(ids).toEqual([]);
+  });
+
+  it('does not tag Devolucion/Problema producto just because the message says "suscripcion"/"me funcionan" (caso Rocio)', () => {
+    const ids = getTicketTags({
+      ...baseTicket,
+      subject: 'pedido #51740',
+      originalText: 'Me gustaria recibir el pedido sin la suscripcion! Si me funcionan ya lo vuelvo a pedir!',
+      category: 'Incidencia en Pedido',
+      intent: 'order_claim'
+    }).map((t) => t.id);
+    expect(ids).not.toContain('refund');
+    expect(ids).not.toContain('product');
+  });
+
+  // ====== Incidencias operativas puestas por el bot (riskFlags) ======
 
   it('returns Incidencia almacen when the bot flags incidencia_almacen', () => {
     expect(
@@ -102,13 +111,13 @@ describe('getTicketTags', () => {
     ).toContain('office_3x2');
   });
 
-  it('returns Incidencia transporte when the bot flags incidencia_transporte', () => {
+  it('returns Incidencia transporte (and Problema envio) when the bot flags incidencia_transporte', () => {
     expect(
       getTicketTags({ ...baseTicket, riskFlags: 'incidencia_transporte' }).map((tag) => tag.id)
-    ).toEqual(['carrier_incident']);
+    ).toEqual(['carrier_incident', 'shipping']);
   });
 
-  it('returns Incidencia transporte for explicit Tipsa absence incidents', () => {
+  it('returns Incidencia transporte for explicit Tipsa absence incidents (text signal is allowed for carrier)', () => {
     expect(
       getTicketTags({
         ...baseTicket,
@@ -126,22 +135,23 @@ describe('getTicketTags', () => {
     ).toEqual(['carrier_incident', 'shipping']);
   });
 
-  it('does not return Incidencia transporte for generic delivery delay language', () => {
+  it('does not derive shipping from a generic "no he recibido" without a classification', () => {
     const ids = getTicketTags({
       ...baseTicket,
       originalText: 'No he recibido mi pedido'
     }).map((tag) => tag.id);
-    expect(ids).toEqual(['shipping']);
+    expect(ids).toEqual([]);
     expect(ids).not.toContain('carrier_incident');
   });
 
-  it('does not return Incidencia transporte for subscription cancellation', () => {
-    expect(
-      getTicketTags({
-        ...baseTicket,
-        originalText: 'Quiero cancelar la suscripcion, gracias'
-      }).map((tag) => tag.id)
-    ).toEqual(['refund']);
+  it('returns only Devolucion for a subscription cancellation classification (not carrier)', () => {
+    const ids = getTicketTags({
+      ...baseTicket,
+      intent: 'subscription_cancel',
+      originalText: 'Quiero cancelar la suscripcion, gracias'
+    }).map((tag) => tag.id);
+    expect(ids).toEqual(['refund']);
+    expect(ids).not.toContain('carrier_incident');
   });
 
   it('does NOT flag the incidence just because the customer mentions it in the message', () => {

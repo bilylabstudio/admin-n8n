@@ -77,7 +77,7 @@ export async function getBotKnowledge(input: BotKnowledgeInput) {
   // camino comun no anade latencia ni llamadas.
   const liveOrderFetcher =
     looksSubscriptionScope(texts, input.classification) ||
-    looksPromoScope(texts) ||
+    looksPromoScope(texts, input.classification) ||
     looksShippingScope(texts, input.classification)
       ? fetchLiveSubscriptionOrders
       : undefined;
@@ -132,7 +132,18 @@ function looksSubscriptionScope(
   );
 }
 
-function looksPromoScope(texts: Array<string | null | undefined>): boolean {
+function looksPromoScope(
+  texts: Array<string | null | undefined>,
+  classification?: CaseClassification | null
+): boolean {
+  // Primero la clasificacion del bot: si la IA entendio "falta producto / pedido
+  // incompleto", disparamos el lookup en vivo aunque el texto no encaje en el patron.
+  const classifierText = [classification?.subintent, classification?.family]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ')
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '');
+  if (/faltante|incomplet/.test(classifierText)) return true;
   const text = String(texts.join(' ') || '')
     .toLowerCase()
     .normalize('NFD')
