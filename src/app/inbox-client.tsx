@@ -10,9 +10,11 @@ import {
 import {
   type InboxGroup,
   inboxGroups,
+  isReplyEdited,
   labelForStatus,
   statusTone
 } from '@/lib/status';
+import { ReplyDiffView } from './reply-diff-view';
 
 type TicketEvent = {
   id: string;
@@ -1048,6 +1050,20 @@ function ThreadPane({
   selectedTicket: Ticket | null;
   submitting: string | null;
 }) {
+  const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(() => new Set());
+
+  const toggleReplyDiff = (messageId: string) => {
+    setExpandedDiffs((current) => {
+      const next = new Set(current);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
   if (!customerEmail) {
     return (
       <section className="review-pane">
@@ -1105,6 +1121,14 @@ function ThreadPane({
       <div className="conv-thread">
         {messages.map((message) => {
           const isInbound = message.direction === 'inbound';
+          const canShowReplyDiff =
+            !isInbound &&
+            selectedTicket?.id === message.ticketId &&
+            selectedTicket.status === 'edited_sent' &&
+            Boolean(selectedTicket.aiReply) &&
+            isReplyEdited(selectedTicket.finalReply || '', selectedTicket.aiReply);
+          const isReplyDiffOpen = expandedDiffs.has(message.id);
+
           return (
             <div
               className={`thread-turn ${isInbound ? 'from-client' : 'from-admin'}`}
@@ -1137,6 +1161,25 @@ function ThreadPane({
                   <div className="bubble-tags">
                     <TagBadges tags={message.tags} />
                   </div>
+                ) : null}
+                {canShowReplyDiff ? (
+                  <>
+                    <button
+                      aria-expanded={isReplyDiffOpen}
+                      className="reply-diff-toggle"
+                      type="button"
+                      onClick={() => toggleReplyDiff(message.id)}
+                    >
+                      {isReplyDiffOpen ? 'Ocultar comparacion IA' : 'Ver cambios respecto a IA'}
+                      <span aria-hidden="true">{isReplyDiffOpen ? '^' : 'v'}</span>
+                    </button>
+                    {isReplyDiffOpen ? (
+                      <ReplyDiffView
+                        iaDraft={selectedTicket.aiReply}
+                        sent={selectedTicket.finalReply || message.text}
+                      />
+                    ) : null}
+                  </>
                 ) : null}
               </div>
             </div>
@@ -1203,6 +1246,20 @@ function ConversationPane({
   onSubmit: (action: SubmitAction, ticketId?: string) => void;
   submitting: string | null;
 }) {
+  const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(() => new Set());
+
+  const toggleReplyDiff = (ticketId: string) => {
+    setExpandedDiffs((current) => {
+      const next = new Set(current);
+      if (next.has(ticketId)) {
+        next.delete(ticketId);
+      } else {
+        next.add(ticketId);
+      }
+      return next;
+    });
+  };
+
   if (!customerEmail) {
     return (
       <section className="review-pane">
@@ -1253,6 +1310,11 @@ function ConversationPane({
           const adminText = isSent
             ? (ticket.finalReply || ticket.aiReply || '')
             : (ticket.aiReply || '');
+          const canShowReplyDiff =
+            ticket.status === 'edited_sent' &&
+            Boolean(ticket.aiReply) &&
+            isReplyEdited(ticket.finalReply || '', ticket.aiReply);
+          const isReplyDiffOpen = expandedDiffs.has(ticket.id);
 
           return (
             <div className="thread-turn" key={ticket.id}>
@@ -1360,6 +1422,22 @@ function ConversationPane({
                     {ticket.webmailSyncError ? <b>Sync webmail pendiente</b> : null}
                   </div>
                   <p className="bubble-text">{adminText || 'Sin texto registrado'}</p>
+                  {canShowReplyDiff ? (
+                    <>
+                      <button
+                        aria-expanded={isReplyDiffOpen}
+                        className="reply-diff-toggle"
+                        type="button"
+                        onClick={() => toggleReplyDiff(ticket.id)}
+                      >
+                        {isReplyDiffOpen ? 'Ocultar comparacion IA' : 'Ver cambios respecto a IA'}
+                        <span aria-hidden="true">{isReplyDiffOpen ? '^' : 'v'}</span>
+                      </button>
+                      {isReplyDiffOpen ? (
+                        <ReplyDiffView iaDraft={ticket.aiReply} sent={adminText} />
+                      ) : null}
+                    </>
+                  ) : null}
                 </div>
               )}
             </div>
