@@ -649,7 +649,6 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
           <span>{updatedAt ? `Actualizado ${formatRelative(updatedAt)}` : 'Sin actualizar'}</span>
           <span>{userEmail}</span>
           <a href="/dashboard">Dashboard</a>
-          <a href="/ventas">Ventas</a>
           <a href="/forms">Formularios</a>
           <a href="/blocklist">Lista negra</a>
           <a href="/logout">Salir</a>

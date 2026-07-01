@@ -1,7 +1,7 @@
 import { z } from 'zod';
-import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { rateKeys, resolveLedgerPlatform } from '@/lib/financial-ledger';
+import { requireSalesApiAccess } from '@/lib/sales-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +12,8 @@ const settingsSchema = z.object({
 });
 
 export async function PUT(request: Request) {
-  await requireUser();
+  const accessError = await requireSalesApiAccess();
+  if (accessError) return accessError;
 
   const body = await request.json().catch(() => null);
   const parsed = settingsSchema.safeParse(body);

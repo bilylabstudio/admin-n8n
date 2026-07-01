@@ -1,9 +1,9 @@
-import { requireUser } from '@/lib/auth';
+import { requireSalesAccess } from '@/lib/sales-auth';
 import { SalesClient } from './sales-client';
 
 export const dynamic = 'force-dynamic';
 
 export default async function VentasPage() {
-  await requireUser();
+  await requireSalesAccess();
   return <SalesClient />;
 }

@@ -1,12 +1,13 @@
-import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { requireSalesApiAccess } from '@/lib/sales-auth';
 import { resolveSalesDateRange } from '@/lib/sales';
 import type { Prisma } from '@prisma/client';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  await requireUser();
+  const accessError = await requireSalesApiAccess();
+  if (accessError) return accessError;
 
   const url = new URL(request.url);
   const platform = url.searchParams.get('platform') || 'all';

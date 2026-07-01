@@ -1,11 +1,12 @@
-import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
+import { requireSalesApiAccess } from '@/lib/sales-auth';
 import { aggregate, chartGranularityForRange, resolveSalesDateRange, viewSyncState } from '@/lib/sales';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-  await requireUser();
+  const accessError = await requireSalesApiAccess();
+  if (accessError) return accessError;
 
   const url = new URL(request.url);
   const platformParam = url.searchParams.get('platform') || 'all';

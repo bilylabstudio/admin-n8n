@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import {
   buildLedgerMatrix,
@@ -10,6 +9,7 @@ import {
   resolveLedgerPlatform,
   resolveRates
 } from '@/lib/financial-ledger';
+import { requireSalesApiAccess } from '@/lib/sales-auth';
 import { buildMonthWeekPresets } from '@/lib/sales-periods';
 
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,8 @@ export const dynamic = 'force-dynamic';
 const SALE_FINANCIAL_STATUSES = ['paid', 'partially_paid'];
 
 export async function GET(request: Request) {
-  await requireUser();
+  const accessError = await requireSalesApiAccess();
+  if (accessError) return accessError;
 
   const url = new URL(request.url);
   const month = normalizeMonthInput(url.searchParams.get('month'));
@@ -96,7 +97,8 @@ const putSchema = z.object({
 });
 
 export async function PUT(request: Request) {
-  await requireUser();
+  const accessError = await requireSalesApiAccess();
+  if (accessError) return accessError;
 
   const body = await request.json().catch(() => null);
   const parsed = putSchema.safeParse(body);
