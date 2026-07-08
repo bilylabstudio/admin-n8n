@@ -25,7 +25,9 @@ export async function GET() {
         'Cache-Control': 'no-store'
       }
     });
-  } catch {
+  } catch (error) {
+    console.error('Bot data export failed', error);
+
     return NextResponse.json(
       { ok: false, error: 'No se pudo exportar la base historica del bot.' },
       { status: 500 }

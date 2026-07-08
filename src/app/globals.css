@@ -1608,6 +1608,31 @@ button {
   padding: 18px 20px;
 }
 
+.db-export-panel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.db-export-panel .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+}
+
+.db-export-note {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 12px;
+}
+
+.db-export-note a {
+  color: var(--gummy-teal);
+  font-weight: 700;
+}
+
 /* ── KPI cards ── */
 .db-kpi-grid {
   display: grid;

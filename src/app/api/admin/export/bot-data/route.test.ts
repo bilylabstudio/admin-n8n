@@ -61,16 +61,22 @@ describe('GET /api/admin/export/bot-data', () => {
   });
 
   it('returns a controlled error when export generation fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const exportError = new Error('database down');
+
     mocks.currentUser.mockResolvedValue({ id: 'user-1', email: 'admin@example.com' });
-    mocks.buildBotDataExportArchive.mockRejectedValue(new Error('database down'));
+    mocks.buildBotDataExportArchive.mockRejectedValue(exportError);
 
     const response = await GET();
     const body = await response.json();
 
     expect(response.status).toBe(500);
+    expect(consoleError).toHaveBeenCalledWith('Bot data export failed', exportError);
     expect(body).toEqual({
       ok: false,
       error: 'No se pudo exportar la base historica del bot.'
     });
+
+    consoleError.mockRestore();
   });
 });

@@ -246,7 +246,6 @@ export function DashboardClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
-  const [exportingBotData, setExportingBotData] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(
@@ -273,38 +272,6 @@ export function DashboardClient() {
     timerRef.current = setInterval(() => void load(period), POLL_MS);
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [load, period]);
-
-  const downloadBotData = async () => {
-    if (exportingBotData) return;
-
-    setExportingBotData(true);
-    setError('');
-
-    try {
-      const response = await fetch('/api/admin/export/bot-data', { cache: 'no-store' });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error || 'No se pudo descargar la base de datos.');
-      }
-
-      const blob = await response.blob();
-      const filename =
-        filenameFromDisposition(response.headers.get('Content-Disposition')) ||
-        `vgummies-bot-data-${new Date().toISOString().slice(0, 10)}.zip`;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'No se pudo descargar la base de datos.');
-    } finally {
-      setExportingBotData(false);
-    }
-  };
 
   const maxCat = data?.topCategories[0]?.count ?? 1;
   const maxInt = data?.topIntents[0]?.count ?? 1;
@@ -594,24 +561,19 @@ export function DashboardClient() {
             </section>
 
             <section className="db-section panel db-export-panel">
-              <button
+              <a
                 className="button success"
-                disabled={exportingBotData}
-                type="button"
-                onClick={downloadBotData}
+                href="/api/admin/export/bot-data"
               >
-                {exportingBotData ? 'Preparando descarga...' : 'Descargar base de datos'}
-              </button>
+                Descargar base de datos
+              </a>
+              <p className="db-export-note">
+                Ruta directa: <a href="/api/admin/export/bot-data">/api/admin/export/bot-data</a>
+              </p>
             </section>
           </>
         )}
       </div>
     </main>
   );
-}
-
-function filenameFromDisposition(value: string | null): string | null {
-  if (!value) return null;
-  const match = /filename="([^"]+)"/.exec(value);
-  return match?.[1] || null;
 }
