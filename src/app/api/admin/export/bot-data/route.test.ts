@@ -35,7 +35,12 @@ describe('GET /api/admin/export/bot-data', () => {
     const body = await response.json();
 
     expect(response.status).toBe(401);
-    expect(body).toEqual({ ok: false, error: 'No autorizado' });
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(body).toEqual({
+      ok: false,
+      error: 'No autorizado',
+      exportVersion: '2026-07-09-diagnose-v2'
+    });
     expect(mocks.buildBotDataExportArchive).not.toHaveBeenCalled();
     expect(mocks.diagnoseBotDataExport).not.toHaveBeenCalled();
   });
@@ -66,6 +71,7 @@ describe('GET /api/admin/export/bot-data', () => {
       'attachment; filename="vgummies-bot-data-2026-07-08.zip"'
     );
     expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(response.headers.get('X-Bot-Data-Export-Version')).toBe('2026-07-09-diagnose-v2');
     expect([...body]).toEqual([...bytes]);
   });
 
@@ -94,6 +100,7 @@ describe('GET /api/admin/export/bot-data', () => {
     expect(response.status).toBe(200);
     expect(response.headers.get('Cache-Control')).toBe('no-store');
     expect(body).toEqual({
+      exportVersion: '2026-07-09-diagnose-v2',
       ok: true,
       checkedAt: '2026-07-08T12:00:00.000Z',
       tables: [
@@ -109,6 +116,31 @@ describe('GET /api/admin/export/bot-data', () => {
     });
     expect(mocks.diagnoseBotDataExport).toHaveBeenCalledTimes(1);
     expect(mocks.buildBotDataExportArchive).not.toHaveBeenCalled();
+  });
+
+  it('returns a versioned diagnostic error if diagnose mode fails unexpectedly', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const diagnoseError = new Error('unexpected diagnose crash');
+
+    mocks.currentUser.mockResolvedValue({ id: 'user-1', email: 'admin@example.com' });
+    mocks.diagnoseBotDataExport.mockRejectedValue(diagnoseError);
+
+    const response = await GET(
+      new Request('https://admin.test/api/admin/export/bot-data?diagnose=1')
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(consoleError).toHaveBeenCalledWith('Bot data export failed', diagnoseError);
+    expect(body).toEqual({
+      ok: false,
+      error: 'No se pudo exportar la base historica del bot.',
+      exportVersion: '2026-07-09-diagnose-v2',
+      phase: 'diagnose'
+    });
+
+    consoleError.mockRestore();
   });
 
   it('returns a controlled error when export generation fails', async () => {
@@ -127,6 +159,7 @@ describe('GET /api/admin/export/bot-data', () => {
     expect(body).toEqual({
       ok: false,
       error: 'No se pudo exportar la base historica del bot.',
+      exportVersion: '2026-07-09-diagnose-v2',
       phase: 'collect',
       table: 'tickets'
     });
