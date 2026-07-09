@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import JSZip from 'jszip';
-import initSqlJs from 'sql.js';
+import type { SqlJsConfig, SqlJsStatic } from 'sql.js';
 import { db } from './db';
 import { getTicketTags } from './ticket-tags';
 
@@ -248,6 +248,9 @@ const SUPPORT_APPROVED_RESPONSE_COLUMNS = [
 const SQL_WASM_FILENAME = 'sql-wasm.wasm';
 const nodeRequire = createRequire(import.meta.url);
 let sqlWasmBinaryPromise: Promise<Uint8Array> | null = null;
+let initSqlJsPromise: Promise<InitSqlJs> | null = null;
+
+type InitSqlJs = (config?: SqlJsConfig) => Promise<SqlJsStatic>;
 
 export class BotDataExportError extends Error {
   readonly phase: BotDataExportPhase;
@@ -679,6 +682,7 @@ export function ticketToExportRow(ticket: TicketExportSource): ExportRow {
 }
 
 async function createSqliteDatabase(tables: ExportTable[]): Promise<Uint8Array> {
+  const initSqlJs = await loadSqlJs();
   const SQL = await initSqlJs({
     wasmBinary: await loadSqlWasmBinary()
   });
@@ -716,6 +720,29 @@ async function createSqliteDatabase(tables: ExportTable[]): Promise<Uint8Array> 
   } finally {
     sqlite.close();
   }
+}
+
+async function loadSqlJs(): Promise<InitSqlJs> {
+  if (!initSqlJsPromise) {
+    initSqlJsPromise = Promise.resolve()
+      .then(() => {
+        const sqlJsModule = nodeRequire('sql.js') as { default?: InitSqlJs } | InitSqlJs;
+        const initSqlJs =
+          typeof sqlJsModule === 'function' ? sqlJsModule : sqlJsModule.default;
+
+        if (typeof initSqlJs !== 'function') {
+          throw new TypeError('sql.js runtime export is not a function');
+        }
+
+        return initSqlJs;
+      })
+      .catch((error) => {
+        initSqlJsPromise = null;
+        throw error;
+      });
+  }
+
+  return initSqlJsPromise;
 }
 
 async function loadSqlWasmBinary(): Promise<Uint8Array> {
