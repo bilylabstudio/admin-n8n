@@ -1,9 +1,51 @@
 import JSZip from 'jszip';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const dbMocks = vi.hoisted(() => ({
+  ticketFindMany: vi.fn(),
+  threadMessageFindMany: vi.fn(),
+  auditEventFindMany: vi.fn(),
+  formSubmissionFindMany: vi.fn(),
+  formImageFindMany: vi.fn(),
+  blockedEmailFindMany: vi.fn(),
+  supportApprovedResponseFindMany: vi.fn(),
+  ticketCount: vi.fn(),
+  threadMessageCount: vi.fn(),
+  auditEventCount: vi.fn(),
+  formSubmissionCount: vi.fn(),
+  formImageCount: vi.fn(),
+  blockedEmailCount: vi.fn(),
+  supportApprovedResponseCount: vi.fn()
+}));
+
+vi.mock('./db', () => ({
+  db: {
+    ticket: { findMany: dbMocks.ticketFindMany, count: dbMocks.ticketCount },
+    threadMessage: {
+      findMany: dbMocks.threadMessageFindMany,
+      count: dbMocks.threadMessageCount
+    },
+    auditEvent: { findMany: dbMocks.auditEventFindMany, count: dbMocks.auditEventCount },
+    formSubmission: {
+      findMany: dbMocks.formSubmissionFindMany,
+      count: dbMocks.formSubmissionCount
+    },
+    formImage: { findMany: dbMocks.formImageFindMany, count: dbMocks.formImageCount },
+    blockedEmail: { findMany: dbMocks.blockedEmailFindMany, count: dbMocks.blockedEmailCount },
+    supportApprovedResponse: {
+      findMany: dbMocks.supportApprovedResponseFindMany,
+      count: dbMocks.supportApprovedResponseCount
+    }
+  }
+}));
+
 import {
+  BotDataExportError,
   buildBotDataExportArchive,
   buildExportManifest,
+  collectBotDataExportTables,
   createCsv,
+  diagnoseBotDataExport,
   serializeExportValue,
   ticketToExportRow,
   toSqliteCell,
@@ -11,6 +53,27 @@ import {
 } from './bot-data-export';
 
 describe('bot data export helpers', () => {
+  beforeEach(() => {
+    for (const mock of Object.values(dbMocks)) {
+      mock.mockReset();
+    }
+
+    dbMocks.ticketFindMany.mockResolvedValue([]);
+    dbMocks.threadMessageFindMany.mockResolvedValue([]);
+    dbMocks.auditEventFindMany.mockResolvedValue([]);
+    dbMocks.formSubmissionFindMany.mockResolvedValue([]);
+    dbMocks.formImageFindMany.mockResolvedValue([]);
+    dbMocks.blockedEmailFindMany.mockResolvedValue([]);
+    dbMocks.supportApprovedResponseFindMany.mockResolvedValue([]);
+    dbMocks.ticketCount.mockResolvedValue(0);
+    dbMocks.threadMessageCount.mockResolvedValue(0);
+    dbMocks.auditEventCount.mockResolvedValue(0);
+    dbMocks.formSubmissionCount.mockResolvedValue(0);
+    dbMocks.formImageCount.mockResolvedValue(0);
+    dbMocks.blockedEmailCount.mockResolvedValue(0);
+    dbMocks.supportApprovedResponseCount.mockResolvedValue(0);
+  });
+
   it('serializes dates, booleans, nulls, and JSON consistently', () => {
     expect(serializeExportValue(new Date('2026-07-01T10:20:30.000Z'))).toBe(
       '2026-07-01T10:20:30.000Z'
@@ -108,7 +171,8 @@ describe('bot data export helpers', () => {
       tables: [
         { name: 'tickets', rowCount: 1, csvFile: 'csv/tickets.csv' },
         { name: 'thread_messages', rowCount: 0, csvFile: 'csv/thread_messages.csv' }
-      ]
+      ],
+      warnings: []
     });
   });
 
@@ -141,5 +205,74 @@ describe('bot data export helpers', () => {
     expect((await zip.file('bot-data.sqlite')?.async('uint8array'))?.byteLength).toBeGreaterThan(
       100
     );
+  });
+
+  it('exports a partial ZIP when support approved responses are unavailable', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    dbMocks.supportApprovedResponseFindMany.mockRejectedValue(new Error('relation missing'));
+
+    const collection = await collectBotDataExportTables();
+
+    expect(collection.warnings).toEqual([
+      {
+        phase: 'collect',
+        table: 'support_approved_responses',
+        message: 'Tabla opcional no disponible durante este export.',
+        recoverable: true
+      }
+    ]);
+    expect(
+      collection.tables.find((table) => table.name === 'support_approved_responses')?.rows
+    ).toEqual([]);
+
+    const archive = await buildBotDataExportArchive({
+      tables: collection.tables,
+      warnings: collection.warnings,
+      exportedAt: new Date('2026-07-08T12:00:00.000Z')
+    });
+    const zip = await JSZip.loadAsync(archive.bytes);
+    const manifest = JSON.parse((await zip.file('manifest.json')?.async('string')) || '{}');
+
+    expect(manifest.warnings).toEqual(collection.warnings);
+    expect(zip.file('csv/support_approved_responses.csv')).toBeTruthy();
+
+    consoleError.mockRestore();
+  });
+
+  it('fails with phase and table when a critical ticket query fails', async () => {
+    dbMocks.ticketFindMany.mockRejectedValue(new Error('database down'));
+
+    await expect(collectBotDataExportTables()).rejects.toMatchObject({
+      name: 'BotDataExportError',
+      phase: 'collect',
+      table: 'tickets'
+    } satisfies Partial<BotDataExportError>);
+  });
+
+  it('diagnoses table counts and SQLite without leaking raw errors', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    dbMocks.ticketCount.mockResolvedValue(42);
+    dbMocks.supportApprovedResponseCount.mockRejectedValue(
+      Object.assign(new Error('relation "SupportApprovedResponse" does not exist'), {
+        code: 'P2021'
+      })
+    );
+
+    const diagnostics = await diagnoseBotDataExport();
+
+    expect(diagnostics.ok).toBe(true);
+    expect(diagnostics.tables.find((table) => table.name === 'tickets')).toMatchObject({
+      ok: true,
+      rowCount: 42
+    });
+    expect(
+      diagnostics.tables.find((table) => table.name === 'support_approved_responses')
+    ).toMatchObject({
+      ok: false,
+      error: 'Error:P2021'
+    });
+    expect(diagnostics.sqlite.ok).toBe(true);
+
+    consoleError.mockRestore();
   });
 });

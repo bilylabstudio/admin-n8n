@@ -25,6 +25,20 @@ export type ExportTable = {
   rows: ExportRow[];
 };
 
+export type BotDataExportPhase = 'collect' | 'sqlite' | 'zip';
+
+export type BotDataExportWarning = {
+  phase: BotDataExportPhase;
+  table: string;
+  message: string;
+  recoverable: boolean;
+};
+
+export type BotDataExportCollection = {
+  tables: ExportTable[];
+  warnings: BotDataExportWarning[];
+};
+
 export type BotDataExportManifest = {
   exportedAt: string;
   version: 1;
@@ -36,12 +50,28 @@ export type BotDataExportManifest = {
     rowCount: number;
     csvFile: string;
   }>;
+  warnings: BotDataExportWarning[];
 };
 
 export type BotDataExportArchive = {
   filename: string;
   bytes: Uint8Array;
   manifest: BotDataExportManifest;
+};
+
+export type BotDataExportTableDiagnostic = {
+  name: string;
+  critical: boolean;
+  ok: boolean;
+  rowCount?: number;
+  error?: string;
+};
+
+export type BotDataExportDiagnostic = {
+  ok: true;
+  checkedAt: string;
+  tables: BotDataExportTableDiagnostic[];
+  sqlite: { ok: true; bytes: number } | { ok: false; error: string };
 };
 
 type TicketExportSource = {
@@ -219,6 +249,32 @@ const SQL_WASM_FILENAME = 'sql-wasm.wasm';
 const nodeRequire = createRequire(import.meta.url);
 let sqlWasmBinaryPromise: Promise<Uint8Array> | null = null;
 
+export class BotDataExportError extends Error {
+  readonly phase: BotDataExportPhase;
+  readonly table?: string;
+
+  constructor(
+    message: string,
+    options: { phase: BotDataExportPhase; table?: string; cause?: unknown }
+  ) {
+    super(message, { cause: options.cause });
+    this.name = 'BotDataExportError';
+    this.phase = options.phase;
+    this.table = options.table;
+  }
+}
+
+export function getBotDataExportErrorDetails(error: unknown): {
+  phase?: BotDataExportPhase;
+  table?: string;
+} {
+  if (!(error instanceof BotDataExportError)) return {};
+  return {
+    phase: error.phase,
+    ...(error.table ? { table: error.table } : {})
+  };
+}
+
 export function serializeExportValue(value: ExportCell): string {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toISOString();
@@ -247,7 +303,8 @@ export function createCsv(table: ExportTable): string {
 
 export function buildExportManifest(
   tables: ExportTable[],
-  exportedAt: Date = new Date()
+  exportedAt: Date = new Date(),
+  warnings: BotDataExportWarning[] = []
 ): BotDataExportManifest {
   return {
     exportedAt: exportedAt.toISOString(),
@@ -259,18 +316,33 @@ export function buildExportManifest(
       name: table.name,
       rowCount: table.rows.length,
       csvFile: `csv/${table.name}.csv`
-    }))
+    })),
+    warnings
   };
 }
 
 export async function buildBotDataExportArchive(options: {
   exportedAt?: Date;
   tables?: ExportTable[];
+  warnings?: BotDataExportWarning[];
 } = {}): Promise<BotDataExportArchive> {
   const exportedAt = options.exportedAt ?? new Date();
-  const tables = options.tables ?? await collectBotDataExportTables();
-  const manifest = buildExportManifest(tables, exportedAt);
-  const sqlite = await createSqliteDatabase(tables);
+  const collection = options.tables
+    ? { tables: options.tables, warnings: options.warnings ?? [] }
+    : await collectBotDataExportTables();
+  const { tables, warnings } = collection;
+  const manifest = buildExportManifest(tables, exportedAt, warnings);
+  let sqlite: Uint8Array;
+
+  try {
+    sqlite = await createSqliteDatabase(tables);
+  } catch (error) {
+    throw new BotDataExportError('No se pudo crear SQLite para el export del bot.', {
+      phase: 'sqlite',
+      cause: error
+    });
+  }
+
   const zip = new JSZip();
 
   zip.file('bot-data.sqlite', sqlite);
@@ -279,11 +351,19 @@ export async function buildBotDataExportArchive(options: {
     zip.file(`csv/${table.name}.csv`, createCsv(table));
   }
 
-  const bytes = await zip.generateAsync({
-    type: 'uint8array',
-    compression: 'DEFLATE',
-    compressionOptions: { level: 6 }
-  });
+  let bytes: Uint8Array;
+  try {
+    bytes = await zip.generateAsync({
+      type: 'uint8array',
+      compression: 'DEFLATE',
+      compressionOptions: { level: 6 }
+    });
+  } catch (error) {
+    throw new BotDataExportError('No se pudo empaquetar el export del bot.', {
+      phase: 'zip',
+      cause: error
+    });
+  }
 
   return {
     filename: `vgummies-bot-data-${exportedAt.toISOString().slice(0, 10)}.zip`,
@@ -292,153 +372,260 @@ export async function buildBotDataExportArchive(options: {
   };
 }
 
-export async function collectBotDataExportTables(): Promise<ExportTable[]> {
-  const [
-    tickets,
-    threadMessages,
-    auditEvents,
-    formSubmissions,
-    formImages,
-    blockedEmails,
-    supportApprovedResponses
-  ] = await Promise.all([
+export async function collectBotDataExportTables(): Promise<BotDataExportCollection> {
+  const warnings: BotDataExportWarning[] = [];
+  const tickets = await collectCriticalRows('tickets', () =>
     db.ticket.findMany({
       orderBy: [{ receivedAt: 'asc' }, { createdAt: 'asc' }],
       include: { approvedBy: { select: { email: true } } }
-    }),
+    })
+  );
+  const threadMessages = await collectCriticalRows('thread_messages', () =>
     db.threadMessage.findMany({
       orderBy: [{ messageAt: 'asc' }, { createdAt: 'asc' }]
-    }),
+    })
+  );
+  const auditEvents = await collectOptionalRows('audit_events', () =>
     db.auditEvent.findMany({
       orderBy: { createdAt: 'asc' },
       include: { user: { select: { email: true } } }
-    }),
+    })
+  );
+  const formSubmissions = await collectOptionalRows('form_submissions', () =>
     db.formSubmission.findMany({
       orderBy: [{ createdAt: 'asc' }],
       include: { approvedBy: { select: { email: true } } }
-    }),
+    })
+  );
+  const formImages = await collectOptionalRows('form_images', () =>
     db.formImage.findMany({
       orderBy: { createdAt: 'asc' }
-    }),
+    })
+  );
+  const blockedEmails = await collectOptionalRows('blocked_emails', () =>
     db.blockedEmail.findMany({
       orderBy: { createdAt: 'asc' }
-    }),
-    db.supportApprovedResponse.findMany({
-      orderBy: [{ family: 'asc' }, { subintent: 'asc' }, { priority: 'desc' }]
     })
-  ]);
+  );
+  const supportApprovedResponses = await collectOptionalRows(
+    'support_approved_responses',
+    () =>
+      db.supportApprovedResponse.findMany({
+        orderBy: [{ family: 'asc' }, { subintent: 'asc' }, { priority: 'desc' }]
+      })
+  );
 
-  return [
-    {
-      name: 'tickets',
-      columns: [...TICKET_COLUMNS],
-      rows: tickets.map(ticketToExportRow)
-    },
-    {
-      name: 'thread_messages',
-      columns: [...THREAD_MESSAGE_COLUMNS],
-      rows: threadMessages.map((message) => ({
-        id: message.id,
-        customer_email: message.customerEmail,
-        customer_name: message.customerName,
-        ticket_id: message.ticketId,
-        direction: message.direction,
-        source: message.source,
-        subject: message.subject,
-        text: message.text,
-        message_at: message.messageAt,
-        message_id: message.messageId,
-        imap_uid: message.imapUid,
-        imap_mailbox: message.imapMailbox,
-        provider_message_id: message.providerMessageId,
-        raw_json: message.rawJson,
-        created_at: message.createdAt,
-        updated_at: message.updatedAt
-      }))
-    },
-    {
-      name: 'audit_events',
-      columns: [...AUDIT_EVENT_COLUMNS],
-      rows: auditEvents.map((event) => ({
-        id: event.id,
-        ticket_id: event.ticketId,
-        form_id: event.formId,
-        event_type: event.eventType,
-        before_status: event.beforeStatus,
-        after_status: event.afterStatus,
-        metadata_json: event.metadataJson,
-        user_email: event.user?.email ?? null,
-        created_at: event.createdAt
-      }))
-    },
-    {
-      name: 'form_submissions',
-      columns: [...FORM_SUBMISSION_COLUMNS],
-      rows: formSubmissions.map((form) => ({
-        id: form.id,
-        token: form.token,
-        type: form.type,
-        ticket_id: form.ticketId,
-        customer_email: form.customerEmail,
-        order_number: form.orderNumber,
-        purchase_email: form.purchaseEmail,
-        reason: form.reason,
-        submitted_at: form.submittedAt,
-        ip_address: form.ipAddress,
-        user_agent: form.userAgent,
-        status: form.status,
-        review_notes: form.reviewNotes,
-        final_reply: form.finalReply,
-        approved_by_email: form.approvedBy?.email ?? null,
-        sent_at: form.sentAt,
-        send_error: form.sendError,
-        expires_at: form.expiresAt,
-        created_at: form.createdAt,
-        updated_at: form.updatedAt
-      }))
-    },
-    {
-      name: 'form_images',
-      columns: [...FORM_IMAGE_COLUMNS],
-      rows: formImages.map((image) => ({
-        id: image.id,
-        form_id: image.formId,
-        filename: image.filename,
-        storage_path: image.storagePath,
-        mime_type: image.mimeType,
-        size_bytes: image.sizeBytes,
-        created_at: image.createdAt
-      }))
-    },
-    {
-      name: 'blocked_emails',
-      columns: [...BLOCKED_EMAIL_COLUMNS],
-      rows: blockedEmails.map((blocked) => ({
-        id: blocked.id,
-        email: blocked.email,
-        reason: blocked.reason,
-        created_at: blocked.createdAt
-      }))
-    },
+  warnings.push(
+    ...auditEvents.warnings,
+    ...formSubmissions.warnings,
+    ...formImages.warnings,
+    ...blockedEmails.warnings,
+    ...supportApprovedResponses.warnings
+  );
+
+  return {
+    tables: [
+      {
+        name: 'tickets',
+        columns: [...TICKET_COLUMNS],
+        rows: tickets.rows.map(ticketToExportRow)
+      },
+      {
+        name: 'thread_messages',
+        columns: [...THREAD_MESSAGE_COLUMNS],
+        rows: threadMessages.rows.map((message) => ({
+          id: message.id,
+          customer_email: message.customerEmail,
+          customer_name: message.customerName,
+          ticket_id: message.ticketId,
+          direction: message.direction,
+          source: message.source,
+          subject: message.subject,
+          text: message.text,
+          message_at: message.messageAt,
+          message_id: message.messageId,
+          imap_uid: message.imapUid,
+          imap_mailbox: message.imapMailbox,
+          provider_message_id: message.providerMessageId,
+          raw_json: message.rawJson,
+          created_at: message.createdAt,
+          updated_at: message.updatedAt
+        }))
+      },
+      {
+        name: 'audit_events',
+        columns: [...AUDIT_EVENT_COLUMNS],
+        rows: auditEvents.rows.map((event) => ({
+          id: event.id,
+          ticket_id: event.ticketId,
+          form_id: event.formId,
+          event_type: event.eventType,
+          before_status: event.beforeStatus,
+          after_status: event.afterStatus,
+          metadata_json: event.metadataJson,
+          user_email: event.user?.email ?? null,
+          created_at: event.createdAt
+        }))
+      },
+      {
+        name: 'form_submissions',
+        columns: [...FORM_SUBMISSION_COLUMNS],
+        rows: formSubmissions.rows.map((form) => ({
+          id: form.id,
+          token: form.token,
+          type: form.type,
+          ticket_id: form.ticketId,
+          customer_email: form.customerEmail,
+          order_number: form.orderNumber,
+          purchase_email: form.purchaseEmail,
+          reason: form.reason,
+          submitted_at: form.submittedAt,
+          ip_address: form.ipAddress,
+          user_agent: form.userAgent,
+          status: form.status,
+          review_notes: form.reviewNotes,
+          final_reply: form.finalReply,
+          approved_by_email: form.approvedBy?.email ?? null,
+          sent_at: form.sentAt,
+          send_error: form.sendError,
+          expires_at: form.expiresAt,
+          created_at: form.createdAt,
+          updated_at: form.updatedAt
+        }))
+      },
+      {
+        name: 'form_images',
+        columns: [...FORM_IMAGE_COLUMNS],
+        rows: formImages.rows.map((image) => ({
+          id: image.id,
+          form_id: image.formId,
+          filename: image.filename,
+          storage_path: image.storagePath,
+          mime_type: image.mimeType,
+          size_bytes: image.sizeBytes,
+          created_at: image.createdAt
+        }))
+      },
+      {
+        name: 'blocked_emails',
+        columns: [...BLOCKED_EMAIL_COLUMNS],
+        rows: blockedEmails.rows.map((blocked) => ({
+          id: blocked.id,
+          email: blocked.email,
+          reason: blocked.reason,
+          created_at: blocked.createdAt
+        }))
+      },
+      {
+        name: 'support_approved_responses',
+        columns: [...SUPPORT_APPROVED_RESPONSE_COLUMNS],
+        rows: supportApprovedResponses.rows.map((response) => ({
+          id: response.id,
+          case_id: response.caseId,
+          family: response.family,
+          subintent: response.subintent,
+          customer_example: response.customerExample,
+          approved_response: response.approvedResponse,
+          must_include: response.mustInclude,
+          must_not_include: response.mustNotInclude,
+          status: response.status,
+          priority: response.priority,
+          created_at: response.createdAt,
+          updated_at: response.updatedAt
+        }))
+      }
+    ],
+    warnings
+  };
+}
+
+export async function diagnoseBotDataExport(): Promise<BotDataExportDiagnostic> {
+  const checkedAt = new Date().toISOString();
+  const tables: BotDataExportTableDiagnostic[] = [];
+
+  for (const check of [
+    { name: 'tickets', critical: true, count: () => db.ticket.count() },
+    { name: 'thread_messages', critical: true, count: () => db.threadMessage.count() },
+    { name: 'audit_events', critical: false, count: () => db.auditEvent.count() },
+    { name: 'form_submissions', critical: false, count: () => db.formSubmission.count() },
+    { name: 'form_images', critical: false, count: () => db.formImage.count() },
+    { name: 'blocked_emails', critical: false, count: () => db.blockedEmail.count() },
     {
       name: 'support_approved_responses',
-      columns: [...SUPPORT_APPROVED_RESPONSE_COLUMNS],
-      rows: supportApprovedResponses.map((response) => ({
-        id: response.id,
-        case_id: response.caseId,
-        family: response.family,
-        subintent: response.subintent,
-        customer_example: response.customerExample,
-        approved_response: response.approvedResponse,
-        must_include: response.mustInclude,
-        must_not_include: response.mustNotInclude,
-        status: response.status,
-        priority: response.priority,
-        created_at: response.createdAt,
-        updated_at: response.updatedAt
-      }))
+      critical: false,
+      count: () => db.supportApprovedResponse.count()
     }
-  ];
+  ]) {
+    try {
+      tables.push({
+        name: check.name,
+        critical: check.critical,
+        ok: true,
+        rowCount: await check.count()
+      });
+    } catch (error) {
+      console.error('Bot data export diagnose table failed', {
+        table: check.name,
+        error
+      });
+      tables.push({
+        name: check.name,
+        critical: check.critical,
+        ok: false,
+        error: safeErrorSummary(error)
+      });
+    }
+  }
+
+  let sqlite: { ok: true; bytes: number } | { ok: false; error: string };
+  try {
+    const bytes = await createSqliteDatabase([
+      { name: 'diagnose', columns: ['id'], rows: [{ id: 'ok' }] }
+    ]);
+    sqlite = { ok: true, bytes: bytes.byteLength };
+  } catch (error) {
+    console.error('Bot data export diagnose sqlite failed', error);
+    sqlite = { ok: false, error: safeErrorSummary(error) };
+  }
+
+  return { ok: true, checkedAt, tables, sqlite };
+}
+
+async function collectCriticalRows<T>(
+  table: string,
+  query: () => Promise<T[]>
+): Promise<{ rows: T[] }> {
+  try {
+    return { rows: await query() };
+  } catch (error) {
+    throw new BotDataExportError(`No se pudo consultar la tabla critica ${table}.`, {
+      phase: 'collect',
+      table,
+      cause: error
+    });
+  }
+}
+
+async function collectOptionalRows<T>(
+  table: string,
+  query: () => Promise<T[]>
+): Promise<{ rows: T[]; warnings: BotDataExportWarning[] }> {
+  try {
+    return { rows: await query(), warnings: [] };
+  } catch (error) {
+    console.error('Optional bot data export table failed', { table, error });
+    return {
+      rows: [],
+      warnings: [
+        {
+          phase: 'collect',
+          table,
+          message: 'Tabla opcional no disponible durante este export.',
+          recoverable: true
+        }
+      ]
+    };
+  }
 }
 
 export function ticketToExportRow(ticket: TicketExportSource): ExportRow {
@@ -590,4 +777,12 @@ function csvEscape(value: string): string {
 
 function quoteSqlIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
+}
+
+function safeErrorSummary(error: unknown): string {
+  if (!(error instanceof Error)) return typeof error;
+
+  const code = (error as { code?: unknown }).code;
+  const codeSuffix = typeof code === 'string' && code ? `:${code}` : '';
+  return `${error.name || 'Error'}${codeSuffix}`;
 }
