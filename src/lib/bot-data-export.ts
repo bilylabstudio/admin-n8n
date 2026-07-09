@@ -1,4 +1,6 @@
-import { join } from 'node:path';
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import JSZip from 'jszip';
 import initSqlJs from 'sql.js';
 import { db } from './db';
@@ -212,6 +214,10 @@ const SUPPORT_APPROVED_RESPONSE_COLUMNS = [
   'created_at',
   'updated_at'
 ] as const;
+
+const SQL_WASM_FILENAME = 'sql-wasm.wasm';
+const nodeRequire = createRequire(import.meta.url);
+let sqlWasmBinaryPromise: Promise<Uint8Array> | null = null;
 
 export function serializeExportValue(value: ExportCell): string {
   if (value === null || value === undefined) return '';
@@ -487,7 +493,7 @@ export function ticketToExportRow(ticket: TicketExportSource): ExportRow {
 
 async function createSqliteDatabase(tables: ExportTable[]): Promise<Uint8Array> {
   const SQL = await initSqlJs({
-    locateFile: (file) => join(process.cwd(), 'node_modules', 'sql.js', 'dist', file)
+    wasmBinary: await loadSqlWasmBinary()
   });
   const sqlite = new SQL.Database();
 
@@ -523,6 +529,48 @@ async function createSqliteDatabase(tables: ExportTable[]): Promise<Uint8Array> 
   } finally {
     sqlite.close();
   }
+}
+
+async function loadSqlWasmBinary(): Promise<Uint8Array> {
+  if (!sqlWasmBinaryPromise) {
+    sqlWasmBinaryPromise = readSqlWasmBinary().catch((error) => {
+      sqlWasmBinaryPromise = null;
+      throw error;
+    });
+  }
+
+  return sqlWasmBinaryPromise;
+}
+
+async function readSqlWasmBinary(): Promise<Uint8Array> {
+  const candidates = getSqlWasmCandidates();
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new Error(`No se pudo cargar ${SQL_WASM_FILENAME} desde: ${candidates.join(', ')}`, {
+    cause: lastError
+  });
+}
+
+function getSqlWasmCandidates(): string[] {
+  const candidates = [
+    join(process.cwd(), 'node_modules', 'sql.js', 'dist', SQL_WASM_FILENAME)
+  ];
+
+  try {
+    candidates.push(join(dirname(nodeRequire.resolve('sql.js')), SQL_WASM_FILENAME));
+  } catch {
+    // The package may already be bundled by Next; the cwd candidate still covers Docker.
+  }
+
+  return [...new Set(candidates)];
 }
 
 function createTableSql(table: ExportTable): string {
