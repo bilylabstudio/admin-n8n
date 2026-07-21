@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   const [tickets, counts] = await Promise.all([
     db.ticket.findMany({
       where,
-      orderBy: { receivedAt: 'desc' },
+      orderBy: { receivedAt: 'asc' },
       take: limit,
       include: {
         auditEvents: {
