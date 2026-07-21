@@ -8,8 +8,8 @@ import { routeSourceLabel, templateLabelFor } from '@/lib/template-labels';
 
 export const dynamic = 'force-dynamic';
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 150;
+const DEFAULT_LIMIT = 150;
+const MAX_LIMIT = 200;
 
 export async function GET(request: Request) {
   const user = await currentUser();
