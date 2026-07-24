@@ -41,110 +41,85 @@ export const ROUTE_SOURCE_LABELS: Record<string, string> = {
 };
 
 export const TEMPLATE_LABELS: Record<string, TemplateLabel> = {
-  sub_baja_generica: { label: 'Como darse de baja', family: 'suscripcion' },
-  sub_explicacion_condiciones: {
-    label: 'Suscripcion generada: condiciones',
-    family: 'suscripcion'
-  },
-  sub_suscripcion_pedido_generado: {
-    label: 'Suscripcion: pedido generado',
-    family: 'suscripcion'
-  },
-  sub_suscripcion_pedido_no_generado: {
-    label: 'Suscripcion: pedido no generado',
-    family: 'suscripcion'
-  },
-  sub_reclama_devolucion_suscripcion: {
-    label: 'Reclama devolucion por suscripcion',
-    family: 'suscripcion'
-  },
-  sub_clienta_pesada: { label: 'Suscripcion insistente', family: 'suscripcion' },
-  sub_amenaza_denuncia: { label: 'Suscripcion amenaza denuncia', family: 'suscripcion' },
-  sub_pedido_en_camino: { label: 'Pedido de suscripcion en camino', family: 'suscripcion' },
-  sub_pedido_recibido_devolucion: {
-    label: 'Suscripcion recibida y quiere devolver',
-    family: 'suscripcion'
-  },
-  sub_pedido_no_salido_excepcion: {
-    label: 'Suscripcion generada no enviada',
-    family: 'suscripcion'
-  },
-  sub_confirmar_cancelacion: { label: 'Confirmar cancelacion', family: 'suscripcion' },
-  sub_cancelacion_recibida: { label: 'Correo de cancelacion recibido', family: 'suscripcion' },
-  sub_cancelacion_recibida_repetida: {
-    label: 'Cancelacion ya recibida repetida',
-    family: 'suscripcion'
-  },
-  sub_sigue_activa_verificar: { label: 'Suscripcion sigue activa', family: 'suscripcion' },
-  sub_cancelada_pedido_sigue_en_pie: {
-    label: 'Cancelada pero pedido sigue en pie',
-    family: 'suscripcion'
-  },
-  sub_enlace_no_funciona: { label: 'Enlace de baja no funciona', family: 'suscripcion' },
-  sub_enlace_no_funciona_frustracion: {
-    label: 'Enlace de baja con frustracion',
-    family: 'suscripcion'
-  },
+  // ==========================================
+  // 1. SUSCRIPCIÓN (3 Subcategorías)
+  // ==========================================
+  sub_baja_generica: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_explicacion_condiciones: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_suscripcion_pedido_generado: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_suscripcion_pedido_no_generado: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_pedido_en_camino: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_pedido_no_salido_excepcion: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_confirmar_cancelacion: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_confirmar_cancelacion_revisar: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_cancelacion_recibida: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_cancelacion_recibida_repetida: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_sigue_activa_verificar: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_cancelada_pedido_sigue_en_pie: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_enlace_no_funciona: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
+  sub_enlace_no_funciona_frustracion: { label: 'No quiere / Quiere darse de baja', family: 'suscripcion' },
 
-  prod_resultados_tiempo: { label: 'Tiempo para ver resultados', family: 'producto' },
-  prod_como_tomar: { label: 'Como tomar las gominolas', family: 'producto' },
-  prod_feedback_digestiones: { label: 'Feedback digestiones', family: 'producto' },
-  prod_azucar_diabetes: { label: 'Azucar o diabetes', family: 'producto' },
-  prod_molestias_digestivas: { label: 'Molestias digestivas', family: 'producto' },
-  prod_tragadas_enteras: { label: 'Gominolas tragadas enteras', family: 'producto' },
-  prod_sleep_info: { label: 'Informacion producto Sleep', family: 'producto' },
-  prod_consejos_inicio: { label: 'Consejos al iniciar tratamiento', family: 'producto' },
-  prod_origen_espana: { label: 'Origen fabricacion Espana', family: 'producto' },
-  prod_seguimiento_tratamiento: { label: 'Seguimiento del tratamiento', family: 'producto' },
+  sub_reclama_devolucion_suscripcion: { label: 'Quiere devolución dinero', family: 'suscripcion' },
+  sub_pedido_recibido_devolucion: { label: 'Quiere devolución dinero', family: 'suscripcion' },
 
-  reembolso_ya_emitido: { label: 'Reembolso ya emitido', family: 'devolucion_reembolso' },
-  pedido_anulado_reembolsado: {
-    label: 'Pedido anulado y reembolsado',
-    family: 'devolucion_reembolso'
-  },
-  dev_3x2_abierta: { label: '3x2 con bolsa abierta', family: 'devolucion_reembolso' },
-  dev_envio_recibido_confirmacion: {
-    label: 'Confirmacion de envio de devolucion',
-    family: 'devolucion_reembolso'
-  },
-  dev_3x2_dos_cerradas: {
-    label: '3x2 con dos bolsas cerradas',
-    family: 'devolucion_reembolso'
-  },
-  dev_3x2_dos_cerradas_detalle: {
-    label: 'Detalle 3x2 dos bolsas cerradas',
-    family: 'devolucion_reembolso'
-  },
-  dev_3x2_condiciones_disputa: {
-    label: 'Disputa condiciones 3x2',
-    family: 'devolucion_reembolso'
-  },
-  dev_producto_cerrado_direccion: {
-    label: 'Producto cerrado y direccion',
-    family: 'devolucion_reembolso'
-  },
-  dev_recibido_devolucion_sin_intro: {
-    label: 'Instrucciones devolucion sin intro',
-    family: 'devolucion_reembolso'
-  },
-  dev_motivo_devolucion: { label: 'Pedir motivo de devolucion', family: 'devolucion_reembolso' },
+  sub_amenaza_denuncia: { label: 'Quiere denunciar quiere llegar mas lejos', family: 'suscripcion' },
+  sub_clienta_pesada: { label: 'Quiere denunciar quiere llegar mas lejos', family: 'suscripcion' },
 
-  envio_no_registrado_sale_hoy: { label: 'Pedido no registrado sale hoy', family: 'envios' },
-  envio_transporte_revision: { label: 'Revision con transporte', family: 'envios' },
-  envio_preventa_22junio: { label: 'Pedido en preventa', family: 'envios' },
-  envio_direccion_pedir: { label: 'Pedir direccion correcta', family: 'envios' },
-  envio_direccion_editada: { label: 'Direccion editada', family: 'envios' },
-  envio_punto_recogida: { label: 'Cambiar a punto de recogida', family: 'envios' },
-  envio_punto_recogida_preventa: {
-    label: 'Punto de recogida en preventa',
-    family: 'envios'
-  },
-  envio_pedido_incompleto: { label: 'Pedido incompleto', family: 'envios' },
+  // ==========================================
+  // 2. PRODUCTO (3 Subcategorías)
+  // ==========================================
+  prod_como_tomar: { label: 'Modo de uso y recomendaciones', family: 'producto' },
+  prod_consejos_inicio: { label: 'Modo de uso y recomendaciones', family: 'producto' },
+  prod_tragadas_enteras: { label: 'Modo de uso y recomendaciones', family: 'producto' },
 
-  promo_3x2_unidades_individuales: {
-    label: 'Promo 3x2 unidades individuales',
-    family: 'pedido_pago'
-  }
+  prod_resultados_tiempo: { label: 'Efectos, tiempo e información del producto', family: 'producto' },
+  prod_sleep_info: { label: 'Efectos, tiempo e información del producto', family: 'producto' },
+  prod_seguimiento_tratamiento: { label: 'Efectos, tiempo e información del producto', family: 'producto' },
+  prod_origen_espana: { label: 'Efectos, tiempo e información del producto', family: 'producto' },
+
+  prod_azucar_diabetes: { label: 'Salud, azúcar y molestias digestivas', family: 'producto' },
+  prod_molestias_digestivas: { label: 'Salud, azúcar y molestias digestivas', family: 'producto' },
+  prod_feedback_digestiones: { label: 'Salud, azúcar y molestias digestivas', family: 'producto' },
+  prod_interaccion_medicacion: { label: 'Salud, azúcar y molestias digestivas', family: 'producto' },
+
+  // ==========================================
+  // 3. DEVOLUCIÓN Y REEMBOLSO (3 Subcategorías)
+  // ==========================================
+  reembolso_ya_emitido: { label: 'Estado / Confirmación de reembolso', family: 'devolucion_reembolso' },
+  pedido_anulado_reembolsado: { label: 'Estado / Confirmación de reembolso', family: 'devolucion_reembolso' },
+
+  dev_motivo_devolucion: { label: 'Gestión e instrucciones de devolución', family: 'devolucion_reembolso' },
+  dev_envio_recibido_confirmacion: { label: 'Gestión e instrucciones de devolución', family: 'devolucion_reembolso' },
+  dev_recibido_devolucion_sin_intro: { label: 'Gestión e instrucciones de devolución', family: 'devolucion_reembolso' },
+  dev_producto_cerrado_direccion: { label: 'Gestión e instrucciones de devolución', family: 'devolucion_reembolso' },
+  dev_pregunta_precinto: { label: 'Gestión e instrucciones de devolución', family: 'devolucion_reembolso' },
+
+  dev_3x2_abierta: { label: 'Condiciones de devolución y promociones (3x2)', family: 'devolucion_reembolso' },
+  dev_3x2_dos_cerradas: { label: 'Condiciones de devolución y promociones (3x2)', family: 'devolucion_reembolso' },
+  dev_3x2_dos_cerradas_detalle: { label: 'Condiciones de devolución y promociones (3x2)', family: 'devolucion_reembolso' },
+  dev_3x2_condiciones_disputa: { label: 'Condiciones de devolución y promociones (3x2)', family: 'devolucion_reembolso' },
+
+  // ==========================================
+  // 4. ENVÍOS (3 Subcategorías)
+  // ==========================================
+  envio_tracking_en_transito: { label: 'Seguimiento y estado del envío', family: 'envios' },
+  envio_no_registrado_sale_hoy: { label: 'Seguimiento y estado del envío', family: 'envios' },
+  envio_preventa_22junio: { label: 'Seguimiento y estado del envío', family: 'envios' },
+
+  envio_direccion_pedir: { label: 'Modificación de dirección o punto de recogida', family: 'envios' },
+  envio_direccion_editada: { label: 'Modificación de dirección o punto de recogida', family: 'envios' },
+  envio_punto_recogida: { label: 'Modificación de dirección o punto de recogida', family: 'envios' },
+  envio_punto_recogida_preventa: { label: 'Modificación de dirección o punto de recogida', family: 'envios' },
+
+  envio_transporte_revision: { label: 'Incidencias con transporte o paquete', family: 'envios' },
+  envio_pedido_incompleto: { label: 'Incidencias con transporte o paquete', family: 'envios' },
+  envio_recontactar_urgente: { label: 'Incidencias con transporte o paquete', family: 'envios' },
+
+  // ==========================================
+  // 5. PEDIDO Y PAGO Y OTROS
+  // ==========================================
+  promo_3x2_unidades_individuales: { label: 'Dudas promociones y pago', family: 'pedido_pago' },
+  comm_baja_emails_revisar: { label: 'Baja de correos comerciales', family: 'sin_etiqueta' }
 };
 
 const PREFIX_FAMILIES: Array<[string, TemplateFamily]> = [
@@ -154,7 +129,8 @@ const PREFIX_FAMILIES: Array<[string, TemplateFamily]> = [
   ['reembolso_', 'devolucion_reembolso'],
   ['envio_', 'envios'],
   ['pedido_', 'pedido_pago'],
-  ['promo_', 'pedido_pago']
+  ['promo_', 'pedido_pago'],
+  ['comm_', 'sin_etiqueta']
 ];
 
 export function templateFamily(templateId: string | null | undefined): TemplateFamily {
@@ -174,12 +150,18 @@ export function templateLabelFor(templateId: string | null | undefined): Templat
     };
   }
 
-  return (
-    TEMPLATE_LABELS[templateId] ?? {
-      label: `Plantilla sin registrar (${templateId})`,
-      family: templateFamily(templateId)
-    }
-  );
+  const known = TEMPLATE_LABELS[templateId];
+  if (known) return known;
+
+  // Limpieza automática si llega un ID nuevo no registrado previamente
+  const cleanId = templateId
+    .replace(/^(sub_|prod_|dev_|envio_|pedido_|promo_|comm_)/, '')
+    .replace(/_/g, ' ');
+
+  return {
+    label: cleanId.charAt(0).toUpperCase() + cleanId.slice(1),
+    family: templateFamily(templateId)
+  };
 }
 
 export function routeSourceLabel(source: string | null | undefined): string {
