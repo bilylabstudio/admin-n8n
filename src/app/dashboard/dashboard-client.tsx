@@ -424,19 +424,20 @@ export function DashboardClient() {
                       </div>
                       <div className="db-reason-track">
                         <div className="db-reason-fill" style={{ width: `${group.percent}%` }} />
+                      </div>
                       <div className="db-mini-list">
-  {group.topReasons.map((reason) => (
-    <div key={reason.id ?? 'sin-etiqueta'} className="db-mini-row">
-      <span>{reason.label}</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <span style={{ fontSize: '11px', color: 'var(--ink-muted)', fontWeight: 'normal' }}>
-          {reason.percentOfFamily}%
-        </span>
-        <strong>{reason.count}</strong>
-      </div>
-    </div>
-  ))}
-</div>
+                        {group.topReasons.map((reason) => (
+                          <div key={reason.id ?? 'sin-etiqueta'} className="db-mini-row">
+                            <span>{reason.label}</span>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '11px', color: 'var(--ink-muted)', fontWeight: 'normal' }}>
+                                {reason.percentOfFamily}%
+                              </span>
+                              <strong>{reason.count}</strong>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                   {data.reasonsByFamily.length === 0 && <div className="empty-state">Sin datos.</div>}
