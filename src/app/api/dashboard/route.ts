@@ -73,10 +73,20 @@ function addReason(
     };
 
   existing.count += reason.count;
-  existing.reasons.push(reason);
+
+  // Buscar si ya existe una subcategoría con exactamente el mismo nombre (label)
+  const duplicateReason = existing.reasons.find((r) => r.label === reason.label);
+
+  if (duplicateReason) {
+    // Si ya existe, le sumamos la cantidad
+    duplicateReason.count += reason.count;
+  } else {
+    // Si no existe, agregamos la nueva subcategoría
+    existing.reasons.push(reason);
+  }
+
   groups.set(family, existing);
 }
-
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return NextResponse.json({ ok: false, error: 'No autorizado' }, { status: 401 });
