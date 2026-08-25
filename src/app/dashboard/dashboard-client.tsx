@@ -74,7 +74,7 @@ type SentimentQuality = {
 type DashboardData = {
   ok: boolean;
   period: Period;
-  realtime: { pendingNow: number; avgWaitMinutes: number; receivedToday: number; sendFailed: number };
+  realtime: { pendingNow: number; avgWaitMinutes: number; receivedToday: number; sentToday?: number; sendFailed: number };
   volumeByDay: { date: string; count: number }[];
   avgResponseByDay: { date: string; avgMinutes: number | null }[];
   statusBreakdown: { status: string; count: number }[];
@@ -343,10 +343,9 @@ export function DashboardClient() {
                   sub="últimas 24 horas"
                 />
                 <KpiCard
-                  label="Errores de envío"
-                  value={data.realtime.sendFailed}
-                  sub="tickets send_failed"
-                  tone={data.realtime.sendFailed > 0 ? 'error' : 'ok'}
+          label="Enviados hoy"
+          value={data.realtime.sentToday ?? 0}
+          sub="últimas 24 horas"
                 />
               </div>
             </section>
