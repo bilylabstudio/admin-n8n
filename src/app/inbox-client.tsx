@@ -263,7 +263,9 @@ const visibleTickets = useMemo(() => {
   const customers = useMemo<CustomerEntry[]>(() => {
     const map = new Map<string, CustomerEntry>();
     for (const t of visibleTickets) {
-      const isPending = REVIEWABLE.includes(t.status);
+      // Solo es pendiente si el estado está en REVIEWABLE y NO ha sido ya enviado/respondido
+      const isPending = REVIEWABLE.includes(t.status) && !['sent', 'edited_sent', 'approved_sent', 'discarded'].includes(t.status);
+
       const existing = map.get(t.customerEmail);
       if (!existing) {
         map.set(t.customerEmail, {
@@ -274,15 +276,22 @@ const visibleTickets = useMemo(() => {
           lastText: t.originalText
         });
       } else {
-        if (isPending) existing.pendingCount++;
+        // Actualizamos al mensaje más reciente
         if (t.receivedAt > existing.lastAt) {
+          existing.pendingCount = isPending ? 1 : 0;
           existing.lastAt = t.receivedAt;
           existing.lastText = t.originalText;
         }
       }
     }
-    return Array.from(map.values()).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
-  }, [visibleTickets]);
+
+    const list = Array.from(map.values()).sort((a, b) => b.lastAt.localeCompare(a.lastAt));
+
+    // Si estamos en "Por revisar", ocultamos los clientes que ya están contestados (0 pendientes)
+    return activeGroup === 'pending_review'
+      ? list.filter((c) => c.pendingCount > 0)
+      : list;
+  }, [visibleTickets, activeGroup]);
 
   const loadTickets = useCallback(
     async (reason: LoadReason = 'manual') => {
