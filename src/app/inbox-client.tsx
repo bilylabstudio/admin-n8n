@@ -1000,11 +1000,30 @@ const visibleTickets = useMemo(() => {
                         </span>
                         <span className="row-preview">{preview(ticket.originalText)}</span>
                         <span className="row-tags">
-                          <TagBadges tags={ticket.tags} />
-                          {ticket.templateLabel ? <em>{ticket.templateLabel.label}</em> : null}
-                          {ticket.category ? <em>{ticket.category}</em> : null}
-                          {ticket.intent ? <em>{ticket.intent}</em> : null}
-                        </span>
+  <TagBadges tags={ticket.tags} />
+  {(() => {
+    const existingLabels = new Set(
+      ticket.tags.map((t) => t.label.toLowerCase().trim())
+    );
+
+    const extraLabels = [
+      ticket.templateLabel?.label,
+      ticket.category,
+      ticket.intent
+    ]
+      .filter((label): label is string => Boolean(label))
+      .filter((label) => {
+        const normalized = label.toLowerCase().trim();
+        if (existingLabels.has(normalized)) return false;
+        existingLabels.add(normalized);
+        return true;
+      });
+
+    return extraLabels.map((label, index) => (
+      <em key={index}>{label}</em>
+    ));
+  })()}
+</span>
                       </button>
                     </div>
                   ))}
