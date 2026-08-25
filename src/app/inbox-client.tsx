@@ -26,7 +26,7 @@ type TicketEvent = {
 };
 
 type TicketTag = {
-  id: 'warehouse' | 'office_3x2' | 'carrier_incident' | 'escalate' | 'refund' | 'shipping' | 'product';
+  id: 'warehouse' | 'office_3x2' | 'carrier_incident' | 'escalate' | 'refund' | 'shipping' | 'product' | 'p1_urgent' | 'p2_returns' | 'p3_shipping' | 'p4_product';
   label: string;
   tone: 'danger' | 'warning' | 'info' | 'neutral';
 };
@@ -137,13 +137,10 @@ const POLL_MS = 7000;
 const REVIEWABLE: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
 const tagFilterOptions: { id: ActiveTagFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
-  { id: 'warehouse', label: 'Incidencia almacen' },
-  { id: 'office_3x2', label: 'Enviar unidad extra' },
-  { id: 'carrier_incident', label: 'Incidencia transporte' },
-  { id: 'escalate', label: 'Escalar' },
-  { id: 'refund', label: 'Devolucion' },
-  { id: 'shipping', label: 'Problema envio' },
-  { id: 'product', label: 'Problema producto' }
+  { id: 'p1_urgent', label: '🚨 P1 - URGENTE / ESCALAR' },
+  { id: 'p2_returns', label: '🔄 P2 - DEVOLUCIONES Y REEMBOLSOS' },
+  { id: 'p3_shipping', label: '📦 P3 - ENVÍOS E INCIDENCIAS' },
+  { id: 'p4_product', label: '💬 P4 - PRODUCTO Y CONSULTAS' }
 ];
 
 export function InboxClient({ userEmail }: { userEmail: string }) {
@@ -181,9 +178,65 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [exportSelection, setExportSelection] = useState<Set<string>>(() => new Set());
   const [exportingAllSent, setExportingAllSent] = useState(false);
 
-  const visibleTickets = useMemo(() => {
+const visibleTickets = useMemo(() => {
     if (activeTagFilter === 'all') return tickets;
-    return tickets.filter((ticket) => ticket.tags.some((tag) => tag.id === activeTagFilter));
+
+    return tickets.filter((ticket) => {
+      // Recogemos todos los IDs de etiquetas y la plantilla asociada al ticket
+      const tagIds: string[] = ticket.tags?.map((t) => t.id) || [];
+      if (ticket.routedTemplateId) tagIds.push(ticket.routedTemplateId);
+
+      // 🚨 P1: URGENTE / ESCALAR / DENUNCIAS
+      if (activeTagFilter === 'p1_urgent') {
+        return (
+          ticket.escalationRecommended ||
+          tagIds.some((id) =>
+            [
+              'escalate',
+              'sub_amenaza_denuncia',
+              'sub_clienta_pesada',
+              'envio_recontactar_urgente',
+              'dev_3x2_condiciones_disputa'
+            ].includes(id)
+          )
+        );
+      }
+
+      // 🔄 P2: DEVOLUCIONES Y REEMBOLSOS
+      if (activeTagFilter === 'p2_returns') {
+        return tagIds.some(
+          (id) =>
+            id === 'refund' ||
+            id.startsWith('dev_') ||
+            id.startsWith('reembolso_') ||
+            id === 'sub_reclama_devolucion_suscripcion' ||
+            id === 'sub_pedido_recibido_devolucion'
+        );
+      }
+
+      // 📦 P3: ENVÍOS E INCIDENCIAS DE TRANSPORTE
+      if (activeTagFilter === 'p3_shipping') {
+        return tagIds.some(
+          (id) =>
+            ['shipping', 'carrier_incident', 'warehouse'].includes(id) ||
+            id.startsWith('envio_')
+        );
+      }
+
+      // 💬 P4: PRODUCTO, DUDAS Y OTROS
+      if (activeTagFilter === 'p4_product') {
+        return tagIds.some(
+          (id) =>
+            ['product', 'office_3x2'].includes(id) ||
+            id.startsWith('prod_') ||
+            id.startsWith('promo_') ||
+            id.startsWith('comm_') ||
+            id.startsWith('sub_')
+        );
+      }
+
+      return tagIds.includes(activeTagFilter);
+    });
   }, [activeTagFilter, tickets]);
 
   const selectedTicket = useMemo(
