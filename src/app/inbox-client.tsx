@@ -256,7 +256,7 @@ const visibleTickets = useMemo(() => {
   );
 
   const selectedPendingTickets = useMemo(
-    () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id)),
+    () => visibleTickets.filter((ticket) => exportSelection.has(ticket.id) && REVIEWABLE.includes(ticket.status)),
     [exportSelection, visibleTickets]
   );
 
