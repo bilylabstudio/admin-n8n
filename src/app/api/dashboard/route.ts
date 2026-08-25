@@ -110,6 +110,7 @@ export async function GET(request: Request) {
     pendingNow,
     pendingTickets,
     receivedToday,
+    sentToday,
     sendFailed,
     rawVolume,
     rawAvgResponse,
@@ -131,6 +132,7 @@ export async function GET(request: Request) {
       select: { receivedAt: true },
     }),
     db.ticket.count({ where: { receivedAt: { gte: startOfToday } } }),
+    db.ticket.count({ where: { sentAt: { gte: startOfToday } } }),
     db.ticket.count({ where: { status: 'send_failed' } }),
     db.$queryRaw<RawRow[]>`
       SELECT DATE_TRUNC('day', "receivedAt") AS date, COUNT(*)::bigint AS count
@@ -310,6 +312,7 @@ export async function GET(request: Request) {
       pendingNow,
       avgWaitMinutes: Math.round(avgWaitMinutes),
       receivedToday,
+      sentToday,
       sendFailed,
     },
     volumeByDay,
