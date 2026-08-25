@@ -179,13 +179,23 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [exportingAllSent, setExportingAllSent] = useState(false);
 
 const visibleTickets = useMemo(() => {
-    if (activeTagFilter === 'all') return tickets;
+  return tickets.filter((ticket) => {
+    // 💡 HILO RESUELTO: Ocultar si la última palabra la dijimos nosotros
+    if (activeGroup === 'pending_review') {
+      const isAlreadyHandled = ['sent', 'edited_sent', 'approved_sent', 'discarded'].includes(ticket.status);
+      const hasSentReply = Boolean(ticket.finalReply || ticket.sentAt);
 
-    return tickets.filter((ticket) => {
-      // Recogemos todos los IDs de etiquetas y la plantilla asociada al ticket
-      const tagIds: string[] = ticket.tags?.map((t) => t.id) || [];
-      if (ticket.routedTemplateId) tagIds.push(ticket.routedTemplateId);
+      // Si ya fue gestionado por estado O tiene una respuesta guardada/enviada, se oculta
+      if (isAlreadyHandled || hasSentReply) {
+        return false;
+      }
+    }
+    // Si el filtro de pestaña es 'all', mostramos el ticket pendiente
+    if (activeTagFilter === 'all') return true;
 
+    // Recogemos todos los IDs de etiquetas y la plantilla asociada al ticket
+    const tagIds: string[] = ticket.tags?.map((t) => t.id) || [];
+    if (ticket.routedTemplateId) tagIds.push(ticket.routedTemplateId);
       // 🚨 P1: URGENTE / ESCALAR / DENUNCIAS
       if (activeTagFilter === 'p1_urgent') {
         return (
