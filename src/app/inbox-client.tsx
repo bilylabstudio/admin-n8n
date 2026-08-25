@@ -695,18 +695,25 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
               </div>
             </div>
             <nav className="status-nav">
-              {inboxGroups.map((group) => (
-                <button
-                  className={group.id === activeGroup ? 'status-link active' : 'status-link'}
-                  key={group.id}
-                  type="button"
-                  onClick={() => setActiveGroup(group.id)}
-                >
-                  <span>{group.label}</span>
-                  <strong>{counts[group.id] || 0}</strong>
-                </button>
-              ))}
-            </nav>
+  {inboxGroups.map((group) => {
+    const countToDisplay =
+      group.id === activeGroup && activeTagFilter !== 'all'
+        ? visibleTickets.length
+        : counts[group.id] || 0;
+
+    return (
+      <button
+        className={group.id === activeGroup ? 'status-link active' : 'status-link'}
+        key={group.id}
+        type="button"
+        onClick={() => setActiveGroup(group.id)}
+      >
+        <span>{group.label}</span>
+        <strong>{countToDisplay}</strong>
+      </button>
+    );
+  })}
+</nav>
           </div>
         </aside>
 
