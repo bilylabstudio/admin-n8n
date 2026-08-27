@@ -362,7 +362,7 @@ const visibleTickets = useMemo(() => {
         setThreadComposerMode(data.composerMode);
         setThreadPendingTicketId(data.pendingTicketId);
         setThreadAnchorTicketId(data.anchorTicketId);
-        setDraft(data.draft || '');
+        setDraft(data.draft || selectedTicket?.aiReply || '');
         setDirty(false);
         const nextSelectedId = ticketId || data.pendingTicketId || data.anchorTicketId;
         if (nextSelectedId) setSelectedId(nextSelectedId);
@@ -388,9 +388,12 @@ const visibleTickets = useMemo(() => {
   }, [loadTickets]);
 
   useEffect(() => {
-    if (!selectedTicket || dirty || viewMode === 'conversations' || threadComposerMode !== 'review_ticket') return;
-    setDraft(selectedTicket.finalReply || selectedTicket.aiReply || '');
-  }, [dirty, selectedTicket, threadComposerMode, viewMode]);
+  if (!selectedTicket || dirty) return;
+  const content = selectedTicket.finalReply || selectedTicket.aiReply || '';
+  if (content && !draft) {
+    setDraft(content);
+  }
+}, [dirty, selectedTicket, draft]);
 
   useEffect(() => {
     if (selectedId && visibleTickets.some((ticket) => ticket.id === selectedId)) return;
