@@ -637,9 +637,16 @@ const visibleTickets = useMemo(() => {
       const response = await fetch(`/api/tickets/${id}/${action}`, init);
       if (!response.ok) throw new Error('No se pudo completar la accion.');
 
+      // 1. Limpiamos el texto del borrador
+      setDraft('');
       setDirty(false);
       setNotice(action === 'send' ? 'Respuesta enviada' : 'Ticket actualizado');
 
+      // 2. Quitamos el ticket contestado de la lista actual y deseleccionamos
+      setTickets((prev) => prev.filter((t) => t.id !== id));
+      setSelectedId(null);
+
+      // 3. Recargamos la información desde el servidor
       if (reloadEmail) {
         await Promise.all([loadConversation(reloadEmail, id), loadTickets('action')]);
       } else {
