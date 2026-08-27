@@ -658,7 +658,6 @@ const visibleTickets = useMemo(() => {
       setSubmitting(null);
     }
   };
-
   const submitThreadFollowUp = async () => {
     const email = selectedCustomerEmail || selectedTicket?.customerEmail;
     const ticketId = threadAnchorTicketId || selectedTicket?.id;
