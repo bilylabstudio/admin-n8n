@@ -359,14 +359,16 @@ export function DashboardClient() {
               </section>
 
               <section className="db-section panel">
-                <h2 className="db-section-title">Tiempo medio de respuesta (min)</h2>
-                {data.avgResponseByDay.length > 0 ? (
-                  <BarChart
-                    data={data.avgResponseByDay.map((d) => ({ date: d.date, avgMinutes: d.avgMinutes ?? 0 }))}
-                    valueKey="avgMinutes"
-                  />
+                <h2 className="db-section-title">Mensajes enviados por día</h2>
+                {data.qualityBySendDay && data.qualityBySendDay.length > 0 ? (
+                  <>
+                    <BarChart data={data.qualityBySendDay} valueKey="sentTotal" />
+                    <p className="db-chart-total">
+                      {data.qualityBySendDay.reduce((acc, d) => acc + d.sentTotal, 0)} en total · periodo {period}
+                    </p>
+                  </>
                 ) : (
-                  <div className="empty-state" style={{ minHeight: 100 }}>Sin datos de respuesta enviada.</div>
+                  <div className="empty-state" style={{ minHeight: 100 }}>Sin datos de mensajes enviados.</div>
                 )}
               </section>
             </div>
