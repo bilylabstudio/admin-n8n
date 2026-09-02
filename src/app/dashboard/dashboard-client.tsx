@@ -165,7 +165,7 @@ function BarChart({ data, valueKey }: { data: { date: string; [k: string]: numbe
   );
 }
 
-function QualityTrend({ data }: { data: [] }) {
+function QualityTrend({ data }: { data: QualityBySendDay[] }) {
   const maxSent = Math.max(...data.map((day) => day.sentTotal), 1);
 
   return (
