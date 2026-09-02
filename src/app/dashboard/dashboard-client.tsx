@@ -76,6 +76,7 @@ type DashboardData = {
   period: Period;
   realtime: { pendingNow: number; avgWaitMinutes: number; receivedToday: number; sentToday?: number; sendFailed: number };
   volumeByDay: { date: string; count: number }[];
+  sentByDay: { date: string; count: number }[];
   avgResponseByDay: { date: string; avgMinutes: number | null }[];
   statusBreakdown: { status: string; count: number }[];
   topCategories: { category: string; count: number }[];
@@ -164,7 +165,7 @@ function BarChart({ data, valueKey }: { data: { date: string; [k: string]: numbe
   );
 }
 
-function QualityTrend({ data }: { data: QualityBySendDay[] }) {
+function QualityTrend({ data }: { data: [] }) {
   const maxSent = Math.max(...data.map((day) => day.sentTotal), 1);
 
   return (
@@ -358,19 +359,19 @@ export function DashboardClient() {
                 <p className="db-chart-total">{data.totalInPeriod} en total · periodo {period}</p>
               </section>
 
-              <section className="db-section panel">
-                <h2 className="db-section-title">Mensajes enviados por día</h2>
-                {data.qualityBySendDay && data.qualityBySendDay.length > 0 ? (
-                  <>
-                    <BarChart data={data.qualityBySendDay} valueKey="sentTotal" />
-                    <p className="db-chart-total">
-                      {data.qualityBySendDay.reduce((acc, d) => acc + d.sentTotal, 0)} en total · periodo {period}
-                    </p>
-                  </>
-                ) : (
-                  <div className="empty-state" style={{ minHeight: 100 }}>Sin datos de mensajes enviados.</div>
-                )}
-              </section>
+            <section className="db-section panel">
+      <h2 className="db-section-title">Mensajes enviados por día</h2>
+      {data.sentByDay && data.sentByDay.length > 0 ? (
+        <>
+          <BarChart data={data.sentByDay} valueKey="count" />
+          <p className="db-chart-total">
+            {data.sentByDay.reduce((acc, d) => acc + d.count, 0)} en total · periodo {period}
+          </p>
+        </>
+      ) : (
+        <div className="empty-state" style={{ minHeight: 100 }}>Sin datos de mensajes enviados.</div>
+      )}
+    </section>
             </div>
 
             {/* ── KPIs de calidad ── */}
