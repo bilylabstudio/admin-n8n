@@ -125,6 +125,7 @@ export async function GET(request: Request) {
     rawSentimentByFamily,
     sentQualityTickets,
     classificationTickets,
+    rawSentByDay,
   ] = await Promise.all([
     db.ticket.count({ where: { status: { in: ['pending_review', 'new', 'ai_generated'] } } }),
     db.ticket.findMany({
@@ -132,7 +133,12 @@ export async function GET(request: Request) {
       select: { receivedAt: true },
     }),
     db.ticket.count({ where: { receivedAt: { gte: startOfToday } } }),
-    db.ticket.count({ where: { sentAt: { gte: startOfToday } } }),
+    db.threadMessage.count({
+  where: {
+    direction: 'outbound',
+    messageAt: { gte: startOfToday },
+  },
+}),
     db.ticket.count({ where: { status: 'send_failed' } }),
     db.$queryRaw<RawRow[]>`
       SELECT DATE_TRUNC('day', "receivedAt") AS date, COUNT(*)::bigint AS count
@@ -213,6 +219,12 @@ export async function GET(request: Request) {
         escalationRecommended: true
       }
     }),
+    db.$queryRaw<RawRow[]>`
+      SELECT DATE_TRUNC('day', "messageAt" AT TIME ZONE 'Europe/Madrid') AS date, COUNT(*)::bigint AS count
+      FROM "ThreadMessage"
+      WHERE direction = 'outbound'
+        AND "messageAt" >= ${sendStartDate}
+      GROUP BY 1 ORDER BY 1 ASC`,
   ]);
 
   const avgWaitMinutes =
@@ -223,6 +235,10 @@ export async function GET(request: Request) {
 
   const volumeByDay = fillDays(
     rawVolume.map((r) => ({ date: r.date.toISOString().slice(0, 10), count: Number(r.count) })),
+    d
+  );
+  const sentByDay = fillDays(
+    rawSentByDay.map((r) => ({ date: r.date.toISOString().slice(0, 10), count: Number(r.count) })),
     d
   );
 
@@ -316,6 +332,7 @@ export async function GET(request: Request) {
       sendFailed,
     },
     volumeByDay,
+    sentByDay,
     avgResponseByDay,
     statusBreakdown: statusBreakdown.map((s) => ({ status: s.status, count: s._count.id })),
     topCategories: rawCategories
