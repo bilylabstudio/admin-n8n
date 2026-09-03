@@ -20,6 +20,9 @@ import {
 } from '@/lib/template-labels';
 
 export const dynamic = 'force-dynamic';
+// Cache en memoria por parametro de consulta (p. ej. period=7d, period=30d)
+const dashboardCache = new Map<string, { data: any; timestamp: number }>();
+const DASHBOARD_CACHE_TTL_MS = 15_000; // 15 segundos de validez
 
 type RawRow = { date: Date; count: bigint };
 type RawAvgRow = { date: Date; avgMinutes: number | null };
@@ -93,6 +96,16 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const period = url.searchParams.get('period') || '7d';
+  const forceRefresh = url.searchParams.get('refresh') === 'true';
+
+  const cacheKey = request.url;
+  const now = Date.now();
+  const cached = dashboardCache.get(cacheKey);
+
+  if (!forceRefresh && cached && (now - cached.timestamp < DASHBOARD_CACHE_TTL_MS)) {
+    return NextResponse.json(cached.data);
+  }
+
   const d = days(period);
 
   const startDate = new Date();
@@ -321,7 +334,7 @@ export async function GET(request: Request) {
     sentimentFamilyMap.set(family, current);
   }
 
-  return NextResponse.json({
+  const responseData = {
     ok: true,
     period,
     realtime: {
@@ -406,5 +419,9 @@ export async function GET(request: Request) {
     escalationRate,
     sensitiveRate,
     serverTime: new Date().toISOString(),
-  });
+};
+
+  dashboardCache.set(cacheKey, { data: responseData, timestamp: Date.now() });
+
+  return NextResponse.json(responseData);
 }
