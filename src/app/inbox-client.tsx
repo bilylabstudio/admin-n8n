@@ -247,8 +247,8 @@ const visibleTickets = useMemo(() => {
       }
 
       return tagIds.includes(activeTagFilter);
-    });
-  }, [activeTagFilter, tickets]);
+  }).sort((a, b) => (activeGroup === 'sent' ? new Date(b.sentAt || b.updatedAt).getTime() - new Date(a.sentAt || a.updatedAt).getTime() : 0));
+}, [activeTagFilter, activeGroup, tickets]);
 
   const selectedTicket = useMemo(
     () => visibleTickets.find((t) => t.id === selectedId) || visibleTickets[0] || null,
