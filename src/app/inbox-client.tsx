@@ -147,6 +147,8 @@ const tagFilterOptions: { id: ActiveTagFilter; label: string }[] = [
 export function InboxClient({ userEmail }: { userEmail: string }) {
   const [activeGroup, setActiveGroup] = useState<InboxGroup>('pending_review');
   const [query, setQuery] = useState('');
+  const [orderMin, setOrderMin] = useState<string>('');
+  const [orderMax, setOrderMax] = useState<string>('');
   const [activeTagFilter, setActiveTagFilter] = useState<ActiveTagFilter>('all');
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -181,6 +183,30 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
 
 const visibleTickets = useMemo(() => {
   return tickets.filter((ticket) => {
+    // 🟢 FILTRO POR RANGO DE PEDIDOS
+    if (orderMin || orderMax) {
+      const rawOrders: string[] = [];
+      if ((ticket as any).orderId) rawOrders.push(String((ticket as any).orderId));
+      if ((ticket as any).orderNumber) rawOrders.push(String((ticket as any).orderNumber));
+      if (Array.isArray((ticket as any).orders)) {
+        (ticket as any).orders.forEach((o: any) => rawOrders.push(String(o.id || o.number || o)));
+      }
+      if (Array.isArray((ticket as any).matchedOrders)) {
+        (ticket as any).matchedOrders.forEach((o: any) => rawOrders.push(String(o.id || o.number || o)));
+      }
+
+      const numericOrders = rawOrders
+        .map((o) => parseInt(o.replace(/\D/g, ''), 10))
+        .filter((n) => !isNaN(n));
+
+      if (numericOrders.length === 0) return false;
+
+      const min = orderMin ? parseInt(orderMin, 10) : -Infinity;
+      const max = orderMax ? parseInt(orderMax, 10) : Infinity;
+
+      const matches = numericOrders.some((num) => num >= min && num <= max);
+      if (!matches) return false;
+    }
     // 💡 HILO RESUELTO: Ocultar si la última palabra la dijimos nosotros
     if (activeGroup === 'pending_review') {
       const isAlreadyHandled = ['sent', 'edited_sent', 'approved_sent', 'discarded'].includes(ticket.status);
@@ -248,7 +274,7 @@ const visibleTickets = useMemo(() => {
 
       return tagIds.includes(activeTagFilter);
   }).sort((a, b) => (activeGroup === 'sent' ? new Date(b.sentAt || b.updatedAt).getTime() - new Date(a.sentAt || a.updatedAt).getTime() : 0));
-}, [activeTagFilter, activeGroup, tickets]);
+}, [activeTagFilter, activeGroup, tickets, orderMin, orderMax]);
 
   const selectedTicket = useMemo(
     () => visibleTickets.find((t) => t.id === selectedId) || visibleTickets[0] || null,
