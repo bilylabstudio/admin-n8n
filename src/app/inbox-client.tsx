@@ -2,6 +2,7 @@
 
 import type { TicketStatus } from '@prisma/client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import approvedReplies from '../data/approved-reply-memory.seed.json';
 import {
   formatCustomerOrderLine,
   formatOrderCountLabel,
@@ -1118,7 +1119,16 @@ const visibleTickets = useMemo(() => {
     </main>
   );
 }
-
+const CTA_BUTTONS = [
+  { label: '📦 Pedido en camino + Baja', subintent: 'pedido_en_camino_suscripcion' },
+  { label: '🔗 Solo Link de Baja', subintent: 'link_baja' },
+  { label: '↩️ Pedido recibido + Devolución', subintent: 'pedido_recibido_devolucion' },
+  { label: '🛑 Cancelar en Almacén', subintent: 'cancelar_antes_de_salir' },
+  { label: '💳 Rechazado + Reembolso', subintent: 'pedido_rechazado_reembolso' },
+  { label: '⏳ Retraso: Preparación', subintent: 'retraso_preparacion' },
+  { label: '🚚 Retraso: En reparto', subintent: 'retraso_en_reparto' },
+  { label: '✅ Confirmación de Baja', subintent: 'suscripcion_cancelada_confirmacion' },
+];
 function ThreadPane({
   anchorTicketId,
   composerMode,
@@ -1289,6 +1299,34 @@ function ThreadPane({
       </div>
 
       <section className="thread-composer">
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingBottom: '10px', marginBottom: '8px', borderBottom: '1px solid #e2e8f0' }}>
+          {CTA_BUTTONS.map((cta) => (
+            <button
+              key={cta.subintent}
+              type="button"
+              onClick={() => {
+                const found = approvedReplies.find((item: any) => item.subintent === cta.subintent);
+                if (found) {
+                  onDraftChange(found.approved_response);
+                }
+              }}
+              style={{
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 500,
+                borderRadius: '6px',
+                border: '1px solid #cbd5e1',
+                backgroundColor: '#ffffff',
+                color: '#1e293b',
+                cursor: 'pointer',
+                boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {cta.label}
+            </button>
+          ))}
+        </div>
         <div className="composer-input-wrap">
           <textarea
             value={draft}
