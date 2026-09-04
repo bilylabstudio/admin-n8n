@@ -5228,5 +5228,168 @@
       "suscripcion_cancelacion",
       "cancelacion_suscripcion"
     ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-pedido_en_camino-vgummies_docx_01",
+    "family": "suscripcion_cancelacion",
+    "subintent": "pedido_en_camino_suscripcion",
+    "customer_example": "Me ha llegado un cobro de suscripción y el pedido ya está en camino",
+    "approved_response": "Hola,\nHemos revisado tu caso y vemos que el pedido se ha generado porque existe una suscripción activa asociada a una compra anterior. Dicha suscripción fue aceptada durante el proceso de compra, ya que era un requisito necesario para acceder a esta oferta y finalizar el pedido.\nEn este momento, el pedido ya no está en nuestras manos, ya que ha sido entregado a la empresa de transporte y no podemos cancelarlo.\nSi finalmente no deseas recibirlo, te recomendamos rechazar la entrega cuando el transportista intente realizarla. De este modo, el paquete será devuelto automáticamente a nuestras instalaciones.\nUna vez hayas rechazado el pedido, respóndenos a este correo para notificárnoslo. Así podremos hacer el seguimiento de la devolución y, en cuanto el paquete llegue a nuestro almacén, tramitaremos el reembolso correspondiente.\nAsimismo, es importante que canceles la suscripción para evitar que se generen nuevos pedidos automáticos. Por motivos de seguridad, nosotros no podemos cancelarla en tu nombre.\nPara hacerlo, sigue estos pasos:\nAccede al siguiente enlace:https://v-gummies.com/a/loop_subscriptions/get-subscription-link\nIntroduce el correo electrónico con el que realizaste la compra.\nRevisa tu bandeja de entrada. Si no encuentras el correo, comprueba también las carpetas de spam, correo no deseado y promociones.\nAbre el correo enviado por la plataforma y pulsa en el enlace personal que contiene.\nEntra en \"Modificar/Ajustar suscripción\".\nDesplázate hasta la parte inferior de la página y pulsa en \"Cancelar suscripción\".\nConfirma la cancelación cuando la plataforma te lo solicite.\nRecibirás un correo confirmando que la suscripción ha quedado cancelada correctamente. Hasta que no recibas ese correo, la cancelación no estará completada.\nSi durante el proceso tienes cualquier dificultad, puedes reenviarnos el correo con el enlace personal o enviarnos una captura de pantalla de lo que te aparece y estaremos encantados de ayudarte.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [
+      "subscription_link"
+    ],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "pedido_en_camino_suscripcion",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "pedido_en_camino"
+    ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-link_baja-vgummies_docx_02",
+    "family": "suscripcion_cancelacion",
+    "subintent": "link_baja",
+    "customer_example": "Solo quiero el enlace para darme de baja de la suscripción",
+    "approved_response": "¡Hola!\nLa suscripción se encuentra activa porque fue aceptada durante el proceso de compra. Si deseas cancelarla, puedes hacerlo en cualquier momento a través del siguiente enlace:\nhttps://v-gummies.com/a/loop_subscriptions/get-subscription-link\nSolo tienes que:\nIntroducir el email con el que realizaste la compra.\nAbrir el correo que te enviará la plataforma.\nAcceder al enlace personal que recibirás.\nEntrar en \"Modificar suscripción\" o \"Ajustar detalles de la suscripción\".\nSeleccionar \"Cancelar suscripción\".\nUna vez completado el proceso, deberías recibir un correo confirmando que la suscripción ha sido cancelada correctamente.\nSi tienes cualquier dificultad durante el proceso, puedes reenviarnos el correo que recibas con el enlace personal y trataremos de ayudarte.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [
+      "subscription_link"
+    ],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "link_baja",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "link_baja"
+    ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-pedido_recibido_devolucion-vgummies_docx_03",
+    "family": "suscripcion_cancelacion",
+    "subintent": "pedido_recibido_devolucion",
+    "customer_example": "Ya recibí el pedido de suscripción y quiero devolverlo y cancelar",
+    "approved_response": "Buenos días:\nGracias por ponerte en contacto con nosotros.\nTras revisar tu caso, vemos que el pedido se ha generado porque existía una suscripción activa asociada a una compra anterior. Dicha suscripción fue aceptada durante el proceso de compra, ya que es un requisito necesario para acceder a esta oferta y finalizar el pedido.\nSi no deseas recibir más pedidos automáticos, es importante que canceles la suscripción, ya que por motivos de seguridad nosotros no podemos hacerlo en tu nombre.\nPara cancelarla, sigue estos pasos:\nAccede al siguiente enlace:https://v-gummies.com/a/loop_subscriptions/get-subscription-link\nIntroduce el correo electrónico con el que realizaste la compra.\nRevisa tu bandeja de entrada. Si no encuentras el correo, comprueba también las carpetas de spam, correo no deseado y promociones.\nAbre el correo que te enviará la plataforma y accede al enlace personal que contiene.\nEntra en \"Modificar suscripción\" o \"Ajustar detalles de la suscripción\".\nDesplázate hasta la parte inferior de la página y selecciona \"Cancelar suscripción\".\nUna vez completado el proceso, recibirás un correo confirmando que la suscripción ha quedado cancelada correctamente.\nRespecto al pedido que has recibido y no deseas conservar, puedes devolverlo siempre que todas las bolsas estén completamente cerradas, precintadas y sin abrir a la siguiente dirección:\nChic&LoveCentro Empresarial MiniParc ICalle de Azalea, 1 – Edificio F, 1.ª Planta28109 Alcobendas (Madrid)\nPuedes realizar el envío por la empresa de transporte que prefieras. Te recomendamos hacerlo con número de seguimiento y conservar el justificante hasta que podamos confirmar la recepción del paquete.\nUna vez recibamos la devolución y comprobemos que todas las bolsas están cerradas, precintadas y sin abrir, procederemos a realizar el reembolso económico correspondiente.\nQuedamos a tu disposición para cualquier duda.\nUn saludo,Susana | Customer Support",
+    "must_include": [
+      "subscription_link",
+      "address"
+    ],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "pedido_recibido_devolucion",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "devolucion_pedido"
+    ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-cancelar_antes_de_salir-vgummies_docx_04",
+    "family": "suscripcion_cancelacion",
+    "subintent": "cancelar_antes_de_salir",
+    "customer_example": "Quiero cancelar el pedido de suscripción antes de que lo envíen",
+    "approved_response": "Hola,\nEl pedido se ha generado porque existe una suscripción activa asociada a una compra anterior. Esta suscripción fue aceptada durante el proceso de compra, ya que era necesaria para acceder a la oferta y finalizar el pedido.\nAun así, como el pedido todavía no ha salido de nuestras instalaciones, vamos a realizar una excepción: cancelaremos el pedido y tramitaremos el reembolso correspondiente. El importe puede tardar algunos días en aparecer en tu cuenta, dependiendo de tu entidad bancaria.\nEs importante que canceles personalmente la suscripción para evitar que se generen nuevos pedidos. Nosotros no podemos cancelarla en tu nombre por motivos de seguridad.\nPara hacerlo, sigue estos pasos:\nAccede al siguiente enlace:https://v-gummies.com/a/loop_subscriptions/get-subscription-link\nIntroduce el correo electrónico con el que realizaste la compra.\nPulsa el botón para recibir el acceso a tu suscripción.\nRevisa tu bandeja de entrada. Si no encuentras el correo, comprueba también las carpetas de spam, correo no deseado y promociones.\nAbre el correo enviado por la plataforma y pulsa en el enlace personal que aparece en su interior.\nUna vez dentro del portal, selecciona “Modificar suscripción” o “Ajustar detalles de la suscripción”.\nDesplázate hasta la parte inferior de la página.\nPulsa en “Cancelar suscripción”.\nConfirma nuevamente la cancelación cuando la plataforma te lo solicite.\nAl terminar, recibirás un correo confirmando que la suscripción ha quedado cancelada correctamente. Hasta que no recibas ese correo, la cancelación no estará confirmada.\nEsta gestión del pedido constituye una excepción que estamos realizando para ayudarte..\nUn saludo,\nSusana | Customer Support",
+    "must_include": [
+      "subscription_link"
+    ],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "cancelar_antes_de_salir",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "cancelar_pedido"
+    ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-pedido_rechazado_reembolso-vgummies_docx_05",
+    "family": "suscripcion_cancelacion",
+    "subintent": "pedido_rechazado_reembolso",
+    "customer_example": "Ya he rechazado la entrega con la empresa de transporte",
+    "approved_response": "Hola 😊\nMuchas gracias.\nLa empresa de transporte nos ha confirmado el rechazo de la entrega y, por nuestra parte, ya hemos procedido a realizar el reembolso correspondiente. Ten en cuenta que el importe puede tardar algunos días en reflejarse en tu cuenta, dependiendo de los plazos de tu entidad bancaria.\nNo obstante, queremos comentarte que la suscripción sigue apareciendo activa en nuestro sistema. Es muy importante que la canceles para evitar que se generen nuevos pedidos automáticos en el futuro, ya que nosotros no podemos hacerlo directamente por ti porque el enlace de gestión es personal e individual para cada cliente.\nPara darte de baja:\nAccede al siguiente enlace:https://v-gummies.com/a/loop_subscriptions/get-subscription-link\nIntroduce el email con el que realizaste la compra.\nRecibirás un correo electrónico con un enlace personal.\nAccede a ese enlace y pulsa en \"Modificar suscripción\" o \"Ajustar detalles de la suscripción\".\nSelecciona la opción \"Cancelar suscripción\".\nSi tienes cualquier dificultad durante el proceso, puedes reenviarnos el correo que recibas con el enlace personal y trataremos de ayudarte a localizar la opción correcta.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [
+      "subscription_link"
+    ],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "pedido_rechazado_reembolso",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "reembolso"
+    ]
+  },
+  {
+    "case_id": "memory-envios-retraso_preparacion-vgummies_docx_06",
+    "family": "envios",
+    "subintent": "retraso_preparacion",
+    "customer_example": "¿Por qué mi pedido tarda tanto en prepararse?",
+    "approved_response": "Hola,\nQueríamos informarte de que, debido al elevado volumen de pedidos que estamos gestionando estos días de verano, tu pedido está sufriendo un pequeño retraso en la preparación.\nAntes de nada, queremos pedirte disculpas por las molestias que esto pueda ocasionarte. Nuestro equipo está trabajando para que salga lo antes posible.\nEn cuanto el pedido sea expedido, recibirás automáticamente un correo electrónico con el número de seguimiento para que puedas consultar el estado del envío en todo momento.\nAgradecemos mucho tu paciencia y comprensión. Estamos haciendo todo lo posible para que puedas recibir tu pedido cuanto antes.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "retraso_preparacion",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "envios",
+      "retraso"
+    ]
+  },
+  {
+    "case_id": "memory-envios-retraso_en_reparto-vgummies_docx_07",
+    "family": "envios",
+    "subintent": "retraso_en_reparto",
+    "customer_example": "¿Cuándo me llega el pedido? Lleva días retrasado",
+    "approved_response": "Hola,\nQueríamos informarte de que, debido al elevado volumen de pedidos que estamos gestionando estos días, tu pedido ha sufrido un pequeño retraso en la preparación.\nAntes de nada, queremos pedirte disculpas por las molestias que esto pueda ocasionarte.\nNo obstante, tenemos buenas noticias: tu pedido ya se encuentra hoy en reparto, por lo que esperamos que puedas recibirlo a lo largo del día.\nAgradecemos mucho tu paciencia y comprensión. Estamos haciendo todo lo posible para que todos los pedidos lleguen cuanto antes.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "retraso_en_reparto",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "envios",
+      "en_reparto"
+    ]
+  },
+  {
+    "case_id": "memory-suscripcion_cancelacion-suscripcion_cancelada_confirmacion-vgummies_docx_08",
+    "family": "suscripcion_cancelacion",
+    "subintent": "suscripcion_cancelada_confirmacion",
+    "customer_example": "Confírmame si se ha cancelado mi suscripción",
+    "approved_response": "Hola,\nTe confirmamos que ya hemos cancelado tu suscripción correctamente.\nA partir de este momento no se generarán más pedidos automáticos ni se realizarán nuevos cobros asociados a ella.\nSi en el futuro deseas volver a realizar un pedido, podrás hacerlo cuando quieras desde nuestra página web, sin ningún problema.\nQuedamos a tu disposición para cualquier otra consulta.\nUn saludo,\nSusana | Customer Support",
+    "must_include": [],
+    "must_not_include": [],
+    "status": "approved",
+    "priority": 88,
+    "source": "approved_reply_memory",
+    "source_file": "Respuestas vgummies_2.docx",
+    "source_message_id": "suscripcion_cancelada_confirmacion",
+    "was_edited_and_sent": true,
+    "policy_tags": [
+      "suscripcion_cancelacion",
+      "confirmacion_baja"
+    ]
   }
 ]
