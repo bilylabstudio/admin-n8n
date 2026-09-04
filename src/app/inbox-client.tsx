@@ -845,6 +845,32 @@ const visibleTickets = useMemo(() => {
                   placeholder="Email, cliente o asunto"
                 />
               </label>
+              <div className="flex items-center gap-1.5 my-2 px-1">
+          <span className="text-[11px] text-gray-500 font-medium">Nº Pedido:</span>
+          <input
+            type="number"
+            placeholder="Desde"
+            value={orderMin}
+            onChange={(e) => setOrderMin(e.target.value)}
+            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none"
+          />
+          <span className="text-xs text-gray-400">-</span>
+          <input
+            type="number"
+            placeholder="Hasta"
+            value={orderMax}
+            onChange={(e) => setOrderMax(e.target.value)}
+            className="w-20 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none"
+          />
+          {(orderMin || orderMax) && (
+            <button
+              onClick={() => { setOrderMin(''); setOrderMax(''); }}
+              className="text-xs text-red-500 hover:underline ml-1 font-medium"
+            >
+              Limpiar
+            </button>
+          )}
+        </div>
               <div className="view-toggle">
                 <button
                   className={viewMode === 'tickets' ? 'view-toggle-btn active' : 'view-toggle-btn'}
