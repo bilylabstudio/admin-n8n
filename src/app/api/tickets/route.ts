@@ -67,7 +67,31 @@ export async function GET(request: Request) {
       })
     )
   ]);
+const emails = Array.from(
+    new Set(tickets.map((t) => t.customerEmail).filter(Boolean))
+  );
 
+  const orders = emails.length > 0
+    ? await db.platformOrder.findMany({
+        where: { customerEmail: { in: emails } },
+        select: {
+          customerEmail: true,
+          orderNumber: true,
+          externalOrderId: true,
+          id: true
+        }
+      })
+    : [];
+
+  const ordersByEmail = orders.reduce((acc, order) => {
+    if (!order.customerEmail) return acc;
+    if (!acc[order.customerEmail]) acc[order.customerEmail] = [];
+    acc[order.customerEmail].push({
+      id: order.id,
+      orderNumber: order.orderNumber || order.externalOrderId || ''
+    });
+    return acc;
+  }, {} as Record<string, Array<{ id: string; orderNumber: string }>>);
   return NextResponse.json({
     ok: true,
     tickets: tickets.map((ticket) => ({
@@ -105,6 +129,7 @@ export async function GET(request: Request) {
       sentFolderSyncedAt: ticket.sentFolderSyncedAt?.toISOString() || null,
       webmailSyncError: ticket.webmailSyncError,
       updatedAt: ticket.updatedAt.toISOString(),
+      matchedOrders: ordersByEmail[ticket.customerEmail] || [],
       auditEvents: ticket.auditEvents.map((event) => ({
         id: event.id,
         eventType: event.eventType,
