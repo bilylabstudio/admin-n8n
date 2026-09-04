@@ -86,10 +86,17 @@ const emails = Array.from(
   const ordersByEmail = orders.reduce((acc, order) => {
     if (!order.customerEmail) return acc;
     if (!acc[order.customerEmail]) acc[order.customerEmail] = [];
-    acc[order.customerEmail].push({
-      id: order.id,
-      orderNumber: order.orderNumber || order.externalOrderId || ''
-    });
+
+    const raw = order.orderNumber || order.externalOrderId || '';
+    const cleanNumber = String(raw).replace(/\D/g, ''); // Elimina '#' o cualquier letra/símbolo
+
+    if (cleanNumber) {
+      acc[order.customerEmail].push({
+        id: order.id,
+        orderNumber: cleanNumber
+      });
+    }
+
     return acc;
   }, {} as Record<string, Array<{ id: string; orderNumber: string }>>);
   return NextResponse.json({
