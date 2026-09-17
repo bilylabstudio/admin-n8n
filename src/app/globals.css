@@ -1439,6 +1439,86 @@ button {
   font-weight: 700;
 }
 
+.bubble-attachments,
+.composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.composer-attachments {
+  margin: 0 0 8px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: var(--muted-bg);
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 600;
+  max-width: 100%;
+}
+
+.attachment-chip .attachment-name {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip .attachment-size {
+  color: var(--ink-muted);
+  font-weight: 400;
+}
+
+.attachment-chip a {
+  color: var(--gummy-teal);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.attachment-chip a:hover {
+  text-decoration: underline;
+}
+
+.attachment-chip.staged.error {
+  background: rgba(217, 91, 91, 0.12);
+  color: var(--danger, #d95b5b);
+}
+
+.attachment-chip.staged button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 0 0 2px;
+}
+
+.attach-button {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-inset);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.attach-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .reply-diff-toggle {
   display: inline-flex;
   align-items: center;
