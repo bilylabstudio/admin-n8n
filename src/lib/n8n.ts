@@ -1,5 +1,11 @@
 import { env } from './env';
 
+export type OutgoingAttachmentPayload = {
+  filename: string;
+  mime_type: string;
+  content_base64: string;
+};
+
 export type SendApprovedPayload = {
   ticket_id: string;
   to_email: string;
@@ -12,6 +18,16 @@ export type SendApprovedPayload = {
   imap_mailbox?: string;
   message_id?: string;
   references?: string;
+  // Files staged via POST /api/attachments and referenced by id at send
+  // time. n8n's send-approved-reply workflow must attach these to the
+  // outgoing email; see docs/superpowers/specs/2026-09-17-adjuntos-email-tickets-design.md.
+  attachments?: OutgoingAttachmentPayload[];
+};
+
+export type SentAttachmentConfirmation = {
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
 };
 
 export type SentMessagePayload = {
@@ -23,6 +39,9 @@ export type SentMessagePayload = {
   sent_at: string;
   in_reply_to?: string;
   references?: string;
+  // What n8n actually attached to the outgoing email, echoed back so the
+  // audit log and the IMAP "Sent" copy stay honest about what really went out.
+  attachments?: SentAttachmentConfirmation[];
 };
 
 export type N8nSendResult =
