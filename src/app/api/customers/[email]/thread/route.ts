@@ -7,7 +7,8 @@ import {
   dedupeThreadMessages,
   latestReviewableTicket,
   storedThreadMessageToView,
-  ticketToThreadMessages
+  ticketToThreadMessages,
+  type ThreadMessageAttachmentView
 } from '@/lib/thread-messages';
 import { fetchSentMessagesForCustomer } from '@/lib/webmail-thread';
 
@@ -93,9 +94,39 @@ export async function GET(
     take: limit
   });
 
+  const ticketIds = tickets.map((ticket) => ticket.id);
+  const threadMessageIds = storedMessages.map((message) => message.id);
+  const attachmentRows = ticketIds.length || threadMessageIds.length
+    ? await db.ticketAttachment.findMany({
+        where: {
+          OR: [
+            ...(ticketIds.length ? [{ ticketId: { in: ticketIds }, threadMessageId: null }] : []),
+            ...(threadMessageIds.length ? [{ threadMessageId: { in: threadMessageIds } }] : [])
+          ]
+        }
+      })
+    : [];
+
+  const attachmentsByTicketId: Record<string, ThreadMessageAttachmentView[]> = {};
+  const attachmentsByThreadMessageId: Record<string, ThreadMessageAttachmentView[]> = {};
+  for (const row of attachmentRows) {
+    const view: ThreadMessageAttachmentView = {
+      id: row.id,
+      filename: row.filename,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      direction: row.direction
+    };
+    if (row.threadMessageId) {
+      (attachmentsByThreadMessageId[row.threadMessageId] ||= []).push(view);
+    } else if (row.ticketId) {
+      (attachmentsByTicketId[row.ticketId] ||= []).push(view);
+    }
+  }
+
   const messages = dedupeThreadMessages([
-    ...tickets.flatMap(ticketToThreadMessages),
-    ...storedMessages.map(storedThreadMessageToView)
+    ...tickets.flatMap((ticket) => ticketToThreadMessages(ticket, attachmentsByTicketId)),
+    ...storedMessages.map((message) => storedThreadMessageToView(message, attachmentsByThreadMessageId))
   ]).slice(-limit);
 
   const latest = messages[messages.length - 1] || null;
