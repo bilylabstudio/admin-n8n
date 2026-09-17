@@ -29,6 +29,12 @@ APP_BASE_URL=
 FORM_UPLOADS_ROOT=/data/form-uploads
 FORM_UPLOAD_MAX_BYTES=5242880
 FORM_UPLOAD_MAX_FILES=3
+
+# Adjuntos de email en tickets (opcionales con defaults)
+TICKET_ATTACHMENTS_ROOT=/data/ticket-attachments
+TICKET_ATTACHMENT_MAX_BYTES=10485760
+TICKET_ATTACHMENT_MAX_FILES=5
+TICKET_ATTACHMENT_TOTAL_MAX_BYTES=26214400
 ```
 
 `ADMIN_EMAILS` es una lista separada por comas. No hay roles: todos los usuarios creados tienen el mismo acceso.
@@ -135,3 +141,27 @@ Recomendado correrlo via cron de Easypanel (semanal). Los formularios ya enviado
 - `GET /api/forms/<id>?renderTemplate=<key>` — admin only. Detalle + plantilla renderizada opcional.
 - `POST /api/forms/<id>/{approve|reject|manual|discard}` — admin only. `multipart/form-data` con `final_reply` (requerido para approve/reject) y opcional `review_notes`.
 - `GET /api/forms/<id>/images/<imageId>` — admin O `?t=<token>`. Stream binario.
+
+## Adjuntos de email en tickets
+
+Permite adjuntar archivos a una respuesta, ver/descargar los adjuntos de un email recibido, y que la copia guardada en "Enviados" refleje el adjunto real — replicando un cliente de correo normal.
+
+**Flujo:**
+1. n8n extrae los adjuntos del email original y los sube con `POST /api/n8n/tickets/<id>/attachments` justo despues de crear el ticket.
+2. El admin ve los adjuntos entrantes en el hilo (ver/descargar) y puede adjuntar archivos nuevos en el composer antes de enviar; cada archivo se sube de inmediato (staging) a `POST /api/attachments`.
+3. Al enviar, la respuesta incluye los `attachment_ids` ya subidos; la app los codifica en base64 y los manda a n8n dentro de `SendApprovedPayload.attachments`.
+4. n8n adjunta los archivos de verdad al enviar el email, y devuelve en `sent_message.attachments` lo que realmente se adjunto.
+5. La app guarda una copia RFC822 (`multipart/mixed`) fiel en la carpeta "Enviados" cuando `WEBMAIL_IMAP_APPEND_SENT_ENABLED=true`.
+
+**Volumen persistente:** los archivos viven en `TICKET_ATTACHMENTS_ROOT` (default `/data/ticket-attachments`). En Easypanel hay que **marcar el volumen como persistente** explicitamente, igual que con `FORM_UPLOADS_ROOT`.
+
+**Tipos y limites:** imagenes (jpg/png/webp/heic), PDF, Word/Excel (doc/docx/xls/xlsx) y zip. Maximo `TICKET_ATTACHMENT_MAX_BYTES` por archivo (10MB por defecto), `TICKET_ATTACHMENT_MAX_FILES` por mensaje (5) y `TICKET_ATTACHMENT_TOTAL_MAX_BYTES` en total (25MB). El tipo real se valida por contenido (`file-type`), nunca por extension.
+
+**Endpoints internos:**
+
+- `POST /api/n8n/tickets/<id>/attachments` — n8n only, validado con `X-N8N-Ingest-Token: <N8N_INGEST_SECRET>`. `multipart/form-data` con uno o mas campos `file`. Best-effort por archivo (un adjunto invalido no tumba el ticket).
+- `POST /api/attachments` — admin only. `multipart/form-data` con `ticket_id` (o `thread_message_id`) + `file`. Deja el adjunto listo ("staged") para el proximo envio.
+- `DELETE /api/attachments/<id>` — admin only. Borra un adjunto todavia no enviado.
+- `GET /api/attachments/<id>` — admin only. Stream binario; `inline` por defecto, `?download=1` para forzar descarga.
+
+Requiere cambios en los workflows de n8n (documentados en `docs/superpowers/specs/2026-09-17-adjuntos-email-tickets-design.md` y `docs/superpowers/plans/2026-09-17-adjuntos-email-tickets-MANUAL-STEPS.md`) para que los adjuntos entrantes y salientes funcionen de verdad.
