@@ -70,6 +70,7 @@ model User {
   auditEvents     AuditEvent[]
   approvedTickets Ticket[]         @relation("TicketApprovedBy")
   approvedForms   FormSubmission[] @relation("FormApprovedBy")
+  uploadedAttachments TicketAttachment[]
 }
 
 model Session {
@@ -127,6 +128,7 @@ model Ticket {
   auditEvents    AuditEvent[]
   forms          FormSubmission[]
   threadMessages ThreadMessage[]
+  attachments    TicketAttachment[]
 
   @@index([status, receivedAt])
   @@index([receivedAt])
@@ -157,7 +159,8 @@ model ThreadMessage {
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
-  ticket Ticket? @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  ticket      Ticket?            @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  attachments TicketAttachment[]
 
   @@index([customerEmail, messageAt])
   @@index([ticketId])
@@ -237,6 +240,27 @@ model FormImage {
   createdAt   DateTime       @default(now())
 
   @@index([formId])
+}
+
+model TicketAttachment {
+  id               String                 @id @default(cuid())
+  ticketId         String?
+  ticket           Ticket?                @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  threadMessageId  String?
+  threadMessage    ThreadMessage?         @relation(fields: [threadMessageId], references: [id], onDelete: Cascade)
+  direction        ThreadMessageDirection
+  source           ThreadMessageSource
+  filename         String
+  storagePath      String
+  mimeType         String
+  sizeBytes        Int
+  uploadedByUserId String?
+  uploadedBy       User?                  @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  sentAt           DateTime?
+  createdAt        DateTime               @default(now())
+
+  @@index([ticketId])
+  @@index([threadMessageId])
 }
 
 model PlatformOrder {
