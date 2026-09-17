@@ -4,6 +4,7 @@ import { editIntensity } from '@/lib/dashboard-quality';
 import { sendApprovedReply } from '@/lib/n8n';
 import { redirectToApp } from '@/lib/redirects';
 import { canReview, isReplyEdited } from '@/lib/status';
+import { AttachmentSendError, loadStagedAttachmentsForSend, markAttachmentsSent } from '@/lib/ticket-attachments-send';
 import {
   appendSentCopy,
   buildRfc822Message,
@@ -15,10 +16,19 @@ export async function POST(request: Request, { params }: { params: { id: string 
   const user = await requireUser();
   const form = await request.formData();
   const finalReply = String(form.get('final_reply') || '').trim();
+  const attachmentIds = form.getAll('attachment_ids').map((value) => String(value)).filter(Boolean);
   const ticket = await db.ticket.findUnique({ where: { id: params.id } });
 
   if (!ticket || !canReview(ticket.status) || !finalReply) {
     return redirectToApp(`/tickets/${params.id}?error=invalid_reply`);
+  }
+
+  let stagedAttachments: Awaited<ReturnType<typeof loadStagedAttachmentsForSend>>;
+  try {
+    stagedAttachments = await loadStagedAttachmentsForSend(attachmentIds, [ticket.id]);
+  } catch (err) {
+    const code = err instanceof AttachmentSendError ? err.code : 'attachment_error';
+    return redirectToApp(`/tickets/${params.id}?error=${code}`);
   }
 
   const edited = isReplyEdited(finalReply, ticket.aiReply);
@@ -42,7 +52,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
     imap_uid: ticket.imapUid ?? undefined,
     imap_mailbox: ticket.imapMailbox ?? undefined,
     message_id: ticket.messageId ?? ticket.externalMessageId ?? undefined,
-    references: ticket.references ?? undefined
+    references: ticket.references ?? undefined,
+    ...(stagedAttachments.payload.length ? { attachments: stagedAttachments.payload } : {})
   });
 
   if (!result.ok) {
@@ -60,6 +71,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
         metadataJson: result
       }
     });
+    // Leave staged attachments untouched so the retry flow doesn't force a re-upload.
     return redirectToApp(`/tickets/${ticket.id}?error=send_failed`);
   }
 
@@ -76,6 +88,13 @@ export async function POST(request: Request, { params }: { params: { id: string 
   };
 
   if (result.sent_message) {
+    // Trust only what n8n confirms it actually attached; fall back to
+    // everything we sent if an older n8n workflow doesn't echo it back yet.
+    const confirmedFilenames = result.sent_message.attachments?.map((item) => item.filename);
+    const rfc822Attachments = stagedAttachments.payload
+      .filter((item) => !confirmedFilenames || confirmedFilenames.includes(item.filename))
+      .map((item) => ({ filename: item.filename, mimeType: item.mime_type, contentBase64: item.content_base64 }));
+
     const rfc822 = buildRfc822Message({
       from: result.sent_message.from,
       to: result.sent_message.to,
@@ -84,7 +103,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
       html: result.sent_message.html,
       sentAt: result.sent_message.sent_at,
       inReplyTo: result.sent_message.in_reply_to,
-      references: result.sent_message.references
+      references: result.sent_message.references,
+      attachments: rfc822Attachments
     });
     sentCopySync = await appendSentCopy({
       message: rfc822,
@@ -97,6 +117,9 @@ export async function POST(request: Request, { params }: { params: { id: string 
     .map((item) => `${item.action}:${item.message || 'failed'}`)
     .join('; ');
   const syncNow = new Date();
+  const sentAt = result.sent_at ? new Date(result.sent_at) : new Date();
+
+  await markAttachmentsSent(attachmentIds, { sentAt });
 
   await db.ticket.update({
     where: { id: ticket.id },
@@ -104,7 +127,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       status: nextStatus,
       finalReply,
       approvedByUserId: user.id,
-      sentAt: result.sent_at ? new Date(result.sent_at) : new Date(),
+      sentAt,
       providerMessageId: result.provider_message_id,
       seenSyncedAt: answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.seenSyncedAt,
       answeredSyncedAt:
@@ -127,6 +150,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       metadataJson: {
         ...result,
         ...editMetrics,
+        attachment_ids: attachmentIds,
         webmail_sync: {
           answered: answeredSync,
           sent_copy: sentCopySync
