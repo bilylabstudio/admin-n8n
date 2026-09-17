@@ -3,6 +3,7 @@ import { requireUser } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { editIntensity } from '@/lib/dashboard-quality';
 import { sendApprovedReply } from '@/lib/n8n';
+import { AttachmentSendError, loadStagedAttachmentsForSend, markAttachmentsSent } from '@/lib/ticket-attachments-send';
 import {
   appendSentCopy,
   buildRfc822Message,
@@ -19,7 +20,7 @@ export async function POST(
   const user = await requireUser();
   const email = decodeURIComponent(params.email);
 
-  let payload: { final_reply?: string; ticket_id?: string };
+  let payload: { final_reply?: string; ticket_id?: string; attachment_ids?: unknown };
   try {
     payload = await request.json();
   } catch {
@@ -30,6 +31,9 @@ export async function POST(
   if (!finalReply) {
     return NextResponse.json({ ok: false, error: 'empty_reply' }, { status: 400 });
   }
+  const attachmentIds = Array.isArray(payload.attachment_ids)
+    ? payload.attachment_ids.map((value) => String(value)).filter(Boolean)
+    : [];
 
   const ticket = await db.ticket.findFirst({
     where: {
@@ -41,6 +45,21 @@ export async function POST(
 
   if (!ticket) {
     return NextResponse.json({ ok: false, error: 'ticket_not_found' }, { status: 404 });
+  }
+
+  let stagedAttachments: Awaited<ReturnType<typeof loadStagedAttachmentsForSend>>;
+  try {
+    const customerTickets = await db.ticket.findMany({
+      where: { customerEmail: email },
+      select: { id: true }
+    });
+    stagedAttachments = await loadStagedAttachmentsForSend(
+      attachmentIds,
+      customerTickets.map((row) => row.id)
+    );
+  } catch (err) {
+    const code = err instanceof AttachmentSendError ? err.code : 'attachment_error';
+    return NextResponse.json({ ok: false, error: code }, { status: 400 });
   }
 
   const editMetrics = {
@@ -61,7 +80,8 @@ export async function POST(
     imap_uid: ticket.imapUid ?? undefined,
     imap_mailbox: ticket.imapMailbox ?? undefined,
     message_id: ticket.messageId ?? ticket.externalMessageId ?? undefined,
-    references: ticket.references ?? undefined
+    references: ticket.references ?? undefined,
+    ...(stagedAttachments.payload.length ? { attachments: stagedAttachments.payload } : {})
   });
 
   if (!result.ok) {
@@ -79,6 +99,7 @@ export async function POST(
       }
     });
 
+    // Leave staged attachments untouched so the retry flow doesn't force a re-upload.
     return NextResponse.json(
       { ok: false, error: result.error, message: result.message || 'No se pudo enviar.' },
       { status: 502 }
@@ -97,40 +118,9 @@ export async function POST(
     message: 'missing_sent_message'
   };
 
-  if (result.sent_message) {
-    const rfc822 = buildRfc822Message({
-      from: result.sent_message.from,
-      to: result.sent_message.to,
-      subject: result.sent_message.subject,
-      text: result.sent_message.text,
-      html: result.sent_message.html,
-      sentAt: result.sent_message.sent_at,
-      inReplyTo: result.sent_message.in_reply_to,
-      references: result.sent_message.references
-    });
-    sentCopySync = await appendSentCopy({
-      message: rfc822,
-      sentAt: result.sent_message.sent_at
-    });
-  }
-
   const sentAt = result.sent_at ? new Date(result.sent_at) : new Date();
   const syncNow = new Date();
-  const webmailSyncError = [answeredSync, sentCopySync]
-    .filter((item) => !item.ok)
-    .map((item) => `${item.action}:${item.message || 'failed'}`)
-    .join('; ');
-
-  await db.ticket.update({
-    where: { id: ticket.id },
-    data: {
-      seenSyncedAt:
-        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.seenSyncedAt,
-      answeredSyncedAt:
-        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.answeredSyncedAt,
-      webmailSyncError: webmailSyncError || null
-    }
-  });
+  const webmailSyncError = [answeredSync].filter((item) => !item.ok).map((item) => `${item.action}:${item.message || 'failed'}`);
 
   const threadMessage = await db.threadMessage.create({
     data: {
@@ -143,13 +133,47 @@ export async function POST(
       text: finalReply,
       messageAt: sentAt,
       providerMessageId: result.provider_message_id,
-      rawJson: {
-        result,
-        webmail_sync: {
-          answered: answeredSync,
-          sent_copy: sentCopySync
-        }
-      }
+      rawJson: { result }
+    }
+  });
+
+  await markAttachmentsSent(attachmentIds, { sentAt, threadMessageId: threadMessage.id });
+
+  if (result.sent_message) {
+    const confirmedFilenames = result.sent_message.attachments?.map((item) => item.filename);
+    const rfc822Attachments = stagedAttachments.payload
+      .filter((item) => !confirmedFilenames || confirmedFilenames.includes(item.filename))
+      .map((item) => ({ filename: item.filename, mimeType: item.mime_type, contentBase64: item.content_base64 }));
+
+    const rfc822 = buildRfc822Message({
+      from: result.sent_message.from,
+      to: result.sent_message.to,
+      subject: result.sent_message.subject,
+      text: result.sent_message.text,
+      html: result.sent_message.html,
+      sentAt: result.sent_message.sent_at,
+      inReplyTo: result.sent_message.in_reply_to,
+      references: result.sent_message.references,
+      attachments: rfc822Attachments
+    });
+    sentCopySync = await appendSentCopy({
+      message: rfc822,
+      sentAt: result.sent_message.sent_at
+    });
+  }
+
+  webmailSyncError.push(
+    ...[sentCopySync].filter((item) => !item.ok).map((item) => `${item.action}:${item.message || 'failed'}`)
+  );
+
+  await db.ticket.update({
+    where: { id: ticket.id },
+    data: {
+      seenSyncedAt:
+        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.seenSyncedAt,
+      answeredSyncedAt:
+        answeredSync.ok && !answeredSync.skipped ? syncNow : ticket.answeredSyncedAt,
+      webmailSyncError: webmailSyncError.join('; ') || null
     }
   });
 
@@ -163,6 +187,7 @@ export async function POST(
       metadataJson: {
         action: 'thread_follow_up_sent',
         thread_message_id: threadMessage.id,
+        attachment_ids: attachmentIds,
         ...editMetrics,
         result,
         webmail_sync: {
