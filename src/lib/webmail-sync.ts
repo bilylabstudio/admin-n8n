@@ -172,6 +172,22 @@ function header(value: string) {
   return value.replace(/[\r\n]+/g, ' ').trim();
 }
 
+function quoteFilename(value: string) {
+  return value.replace(/["\r\n]/g, '_');
+}
+
+// RFC 2045 requires base64 body lines no longer than 76 characters.
+function wrapBase64(base64: string) {
+  const wrapped = base64.replace(/(.{76})/g, '$1\r\n');
+  return wrapped.endsWith('\r\n') ? wrapped.slice(0, -2) : wrapped;
+}
+
+export type RfcAttachment = {
+  filename: string;
+  mimeType: string;
+  contentBase64: string;
+};
+
 export function buildRfc822Message(input: {
   from: string;
   to: string;
@@ -181,37 +197,70 @@ export function buildRfc822Message(input: {
   sentAt: string;
   inReplyTo?: string | null;
   references?: string | null;
+  attachments?: RfcAttachment[];
 }) {
-  const boundary = `vgummies-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const altBoundary = `vgummies-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const attachments = input.attachments || [];
+  const hasAttachments = attachments.length > 0;
+  const mixedBoundary = `vgummies-mixed-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const lines = [
     `From: ${header(input.from)}`,
     `To: ${header(input.to)}`,
     `Subject: ${header(input.subject)}`,
     `Date: ${new Date(input.sentAt).toUTCString()}`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`
+    hasAttachments
+      ? `Content-Type: multipart/mixed; boundary="${mixedBoundary}"`
+      : `Content-Type: multipart/alternative; boundary="${altBoundary}"`
   ];
 
   if (input.inReplyTo) lines.push(`In-Reply-To: ${header(input.inReplyTo)}`);
   if (input.references) lines.push(`References: ${header(input.references)}`);
 
-  lines.push(
-    '',
-    `--${boundary}`,
+  const alternativeLines = [
+    `--${altBoundary}`,
     'Content-Type: text/plain; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
     '',
     input.text,
     '',
-    `--${boundary}`,
+    `--${altBoundary}`,
     'Content-Type: text/html; charset=utf-8',
     'Content-Transfer-Encoding: 8bit',
     '',
     input.html,
     '',
-    `--${boundary}--`,
+    `--${altBoundary}--`,
     ''
+  ];
+
+  if (!hasAttachments) {
+    lines.push('', ...alternativeLines);
+    return lines.join('\r\n');
+  }
+
+  lines.push(
+    '',
+    `--${mixedBoundary}`,
+    `Content-Type: multipart/alternative; boundary="${altBoundary}"`,
+    '',
+    ...alternativeLines
   );
+
+  for (const attachment of attachments) {
+    const filename = quoteFilename(attachment.filename);
+    lines.push(
+      `--${mixedBoundary}`,
+      `Content-Type: ${attachment.mimeType}; name="${filename}"`,
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${filename}"`,
+      '',
+      wrapBase64(attachment.contentBase64),
+      ''
+    );
+  }
+  lines.push(`--${mixedBoundary}--`, '');
 
   return lines.join('\r\n');
 }
