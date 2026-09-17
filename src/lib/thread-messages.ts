@@ -4,6 +4,14 @@ import { getTicketTags } from './ticket-tags';
 
 const SENT_STATUSES = new Set(['approved_sent', 'edited_sent']);
 
+export type ThreadMessageAttachmentView = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  direction: 'inbound' | 'outbound';
+};
+
 export type ThreadMessageView = {
   id: string;
   ticketId: string | null;
@@ -15,11 +23,15 @@ export type ThreadMessageView = {
   status: Ticket['status'] | null;
   customerName: string | null;
   tags: ReturnType<typeof getTicketTags>;
+  attachments: ThreadMessageAttachmentView[];
 };
 
 export type ThreadTicket = Ticket;
 
-export function ticketToThreadMessages(ticket: ThreadTicket): ThreadMessageView[] {
+export function ticketToThreadMessages(
+  ticket: ThreadTicket,
+  attachmentsByTicketId: Record<string, ThreadMessageAttachmentView[]> = {}
+): ThreadMessageView[] {
   const messages: ThreadMessageView[] = [
     {
       id: `ticket:${ticket.id}:inbound`,
@@ -31,7 +43,8 @@ export function ticketToThreadMessages(ticket: ThreadTicket): ThreadMessageView[
       at: ticket.receivedAt.toISOString(),
       status: null,
       customerName: ticket.customerName,
-      tags: getTicketTags(ticket)
+      tags: getTicketTags(ticket),
+      attachments: (attachmentsByTicketId[ticket.id] || []).filter((a) => a.direction === 'inbound')
     }
   ];
 
@@ -46,14 +59,18 @@ export function ticketToThreadMessages(ticket: ThreadTicket): ThreadMessageView[
       at: (ticket.sentAt || ticket.updatedAt).toISOString(),
       status: ticket.status,
       customerName: ticket.customerName,
-      tags: []
+      tags: [],
+      attachments: (attachmentsByTicketId[ticket.id] || []).filter((a) => a.direction === 'outbound')
     });
   }
 
   return messages;
 }
 
-export function storedThreadMessageToView(message: ThreadMessage): ThreadMessageView {
+export function storedThreadMessageToView(
+  message: ThreadMessage,
+  attachmentsByThreadMessageId: Record<string, ThreadMessageAttachmentView[]> = {}
+): ThreadMessageView {
   return {
     id: `thread:${message.id}`,
     ticketId: message.ticketId,
@@ -64,7 +81,8 @@ export function storedThreadMessageToView(message: ThreadMessage): ThreadMessage
     at: message.messageAt.toISOString(),
     status: null,
     customerName: message.customerName,
-    tags: []
+    tags: [],
+    attachments: attachmentsByThreadMessageId[message.id] || []
   };
 }
 
@@ -161,7 +179,7 @@ function normalizeForCompare(value: string) {
   return value
     .trim()
     .replace(/\s+/g, ' ')
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
     .toLowerCase();
 }
