@@ -102,6 +102,77 @@ describe('webmail sync operations', () => {
     expect(message).toContain('Content-Type: multipart/alternative;');
   });
 
+  it('stays multipart/alternative (unchanged) when no attachments are passed', () => {
+    const message = buildRfc822Message({
+      from: 'info@v-gummies.com',
+      to: 'cliente@example.com',
+      subject: 'Re: Consulta',
+      text: 'Hola',
+      html: '<p>Hola</p>',
+      sentAt: '2026-05-25T12:00:00.000Z',
+      attachments: []
+    });
+
+    expect(message).toContain('Content-Type: multipart/alternative;');
+    expect(message).not.toContain('multipart/mixed');
+  });
+
+  it('wraps the message in multipart/mixed with a base64 attachment part', () => {
+    const contentBase64 = Buffer.from('contenido de prueba').toString('base64');
+    const message = buildRfc822Message({
+      from: 'info@v-gummies.com',
+      to: 'cliente@example.com',
+      subject: 'Re: Consulta',
+      text: 'Hola',
+      html: '<p>Hola</p>',
+      sentAt: '2026-05-25T12:00:00.000Z',
+      attachments: [{ filename: 'factura.pdf', mimeType: 'application/pdf', contentBase64 }]
+    });
+
+    expect(message).toContain('Content-Type: multipart/mixed;');
+    expect(message).toContain('Content-Type: multipart/alternative;');
+    expect(message).toContain('Content-Type: application/pdf; name="factura.pdf"');
+    expect(message).toContain('Content-Disposition: attachment; filename="factura.pdf"');
+    expect(message).toContain('Content-Transfer-Encoding: base64');
+    expect(message).toContain(contentBase64);
+    // Both the outer envelope and the original text/html parts must survive.
+    expect(message).toContain('Hola');
+    expect(message).toContain('<p>Hola</p>');
+  });
+
+  it('supports multiple attachments, each with its own MIME part', () => {
+    const message = buildRfc822Message({
+      from: 'info@v-gummies.com',
+      to: 'cliente@example.com',
+      subject: 'Re: Consulta',
+      text: 'Hola',
+      html: '<p>Hola</p>',
+      sentAt: '2026-05-25T12:00:00.000Z',
+      attachments: [
+        { filename: 'foto1.jpg', mimeType: 'image/jpeg', contentBase64: 'Zm9vMQ==' },
+        { filename: 'foto2.jpg', mimeType: 'image/jpeg', contentBase64: 'Zm9vMg==' }
+      ]
+    });
+
+    expect(message.match(/Content-Disposition: attachment/g)?.length).toBe(2);
+    expect(message).toContain('filename="foto1.jpg"');
+    expect(message).toContain('filename="foto2.jpg"');
+  });
+
+  it('sanitizes attachment filenames that contain quotes or newlines', () => {
+    const message = buildRfc822Message({
+      from: 'info@v-gummies.com',
+      to: 'cliente@example.com',
+      subject: 'Re: Consulta',
+      text: 'Hola',
+      html: '<p>Hola</p>',
+      sentAt: '2026-05-25T12:00:00.000Z',
+      attachments: [{ filename: 'raro".txt\r\n', mimeType: 'text/plain', contentBase64: 'aGk=' }]
+    });
+
+    expect(message).not.toContain('raro".txt\r\n"');
+  });
+
   it('skips sent append unless explicitly enabled', async () => {
     const result = await appendSentCopy({
       env: { WEBMAIL_SYNC_ENABLED: 'true', WEBMAIL_IMAP_APPEND_SENT_ENABLED: 'false' },
