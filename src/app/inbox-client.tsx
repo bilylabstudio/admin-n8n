@@ -97,6 +97,20 @@ type CustomerEntry = {
   lastText: string;
 };
 
+type ThreadMessageAttachment = {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+type StagedAttachment = {
+  id: string;
+  filename: string;
+  sizeBytes: number;
+  status: 'uploading' | 'ready' | 'error';
+};
+
 type ThreadMessage = {
   id: string;
   ticketId: string | null;
@@ -108,6 +122,7 @@ type ThreadMessage = {
   status: TicketStatus | null;
   customerName: string | null;
   tags: TicketTag[];
+  attachments: ThreadMessageAttachment[];
 };
 
 type ThreadResponse = {
@@ -155,6 +170,7 @@ export function InboxClient({ userEmail }: { userEmail: string }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [stagedAttachments, setStagedAttachments] = useState<StagedAttachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -391,6 +407,7 @@ const visibleTickets = useMemo(() => {
         setThreadAnchorTicketId(data.anchorTicketId);
         setDraft(data.draft || selectedTicket?.aiReply || '');
         setDirty(false);
+        setStagedAttachments([]);
         const nextSelectedId = ticketId || data.pendingTicketId || data.anchorTicketId;
         if (nextSelectedId) setSelectedId(nextSelectedId);
         setMobilePanel('detail');
@@ -451,6 +468,7 @@ const visibleTickets = useMemo(() => {
     setSelectedId(ticket.id);
     setDraft('');
     setDirty(false);
+    setStagedAttachments([]);
     setNotice('');
     setMobilePanel('detail');
   };
@@ -647,7 +665,58 @@ const visibleTickets = useMemo(() => {
     }
   };
 
-  const submitAction = async (action: SubmitAction, ticketId?: string) => {
+const attachmentOwnerId = threadPendingTicketId || threadAnchorTicketId || selectedTicket?.id || null;
+
+  const addAttachmentFiles = async (files: FileList) => {
+    const ownerId = attachmentOwnerId;
+    if (!ownerId) return;
+
+    for (const file of Array.from(files)) {
+      const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      setStagedAttachments((prev) => [
+        ...prev,
+        { id: localId, filename: file.name, sizeBytes: file.size, status: 'uploading' }
+      ]);
+
+      try {
+        const body = new FormData();
+        body.append('ticket_id', ownerId);
+        body.append('file', file);
+        const response = await fetch('/api/attachments', { method: 'POST', body });
+        const data = (await response.json().catch(() => null)) as
+          | { ok: boolean; id?: string; filename?: string; sizeBytes?: number; error?: string }
+          | null;
+        if (!response.ok || !data?.ok || !data.id) {
+          throw new Error(data?.error || 'upload_failed');
+        }
+        setStagedAttachments((prev) =>
+          prev.map((item) =>
+            item.id === localId
+              ? {
+                  id: data.id as string,
+                  filename: data.filename || file.name,
+                  sizeBytes: data.sizeBytes ?? file.size,
+                  status: 'ready' as const
+                }
+              : item
+          )
+        );
+      } catch {
+        setStagedAttachments((prev) =>
+          prev.map((item) => (item.id === localId ? { ...item, status: 'error' as const } : item))
+        );
+      }
+    }
+  };
+
+  const removeStagedAttachment = async (id: string) => {
+    setStagedAttachments((prev) => prev.filter((item) => item.id !== id));
+    if (!id.startsWith('local-')) {
+      await fetch(`/api/attachments/${id}`, { method: 'DELETE' }).catch(() => undefined);
+    }
+  };
+
+    const submitAction = async (action: SubmitAction, ticketId?: string) => {
     const id = ticketId ?? selectedTicket?.id;
     if (!id) return;
     const reloadEmail = selectedCustomerEmail || selectedTicket?.customerEmail || null;
@@ -657,8 +726,12 @@ const visibleTickets = useMemo(() => {
     try {
       const init: RequestInit = { method: 'POST' };
       if (action === 'send') {
+        const params = new URLSearchParams({ final_reply: draft });
+        stagedAttachments
+          .filter((attachment) => attachment.status === 'ready')
+          .forEach((attachment) => params.append('attachment_ids', attachment.id));
         init.headers = { 'Content-Type': 'application/x-www-form-urlencoded' };
-        init.body = new URLSearchParams({ final_reply: draft });
+        init.body = params;
       }
 
       const response = await fetch(`/api/tickets/${id}/${action}`, init);
@@ -667,6 +740,7 @@ const visibleTickets = useMemo(() => {
       // 1. Limpiamos el texto del borrador
       setDraft('');
       setDirty(false);
+      setStagedAttachments([]);
       setNotice(action === 'send' ? 'Respuesta enviada' : 'Ticket actualizado');
 
       // 2. Quitamos el ticket contestado de la lista actual y deseleccionamos
@@ -693,10 +767,13 @@ const visibleTickets = useMemo(() => {
     setError('');
 
     try {
+      const readyAttachmentIds = stagedAttachments
+        .filter((attachment) => attachment.status === 'ready')
+        .map((attachment) => attachment.id);
       const response = await fetch(`/api/customers/${encodeURIComponent(email)}/thread/send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ final_reply: draft, ticket_id: ticketId })
+        body: JSON.stringify({ final_reply: draft, ticket_id: ticketId, attachment_ids: readyAttachmentIds })
       });
       const data = (await response.json().catch(() => null)) as
         | { ok: boolean; message?: string; error?: string }
@@ -706,6 +783,7 @@ const visibleTickets = useMemo(() => {
       }
 
       setDirty(false);
+      setStagedAttachments([]);
       setNotice('Mensaje enviado');
       await Promise.all([loadConversation(email, ticketId), loadTickets('action')]);
     } catch (err) {
@@ -1165,6 +1243,10 @@ const visibleTickets = useMemo(() => {
             pendingTicketId={threadPendingTicketId}
             selectedTicket={selectedTicket}
             submitting={submitting}
+            stagedAttachments={stagedAttachments}
+            canAttach={Boolean(attachmentOwnerId)}
+            onAddAttachmentFiles={addAttachmentFiles}
+            onRemoveAttachment={removeStagedAttachment}
           />
         </div>
       </section>
@@ -1181,6 +1263,92 @@ const CTA_BUTTONS = [
   { label: '🚚 Retraso: En reparto', subintent: 'retraso_en_reparto' },
   { label: '✅ Confirmación de Baja', subintent: 'suscripcion_cancelada_confirmacion' },
 ];
+function humanFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let value = bytes / 1024;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function MessageAttachments({ attachments }: { attachments: ThreadMessageAttachment[] }) {
+  if (!attachments.length) return null;
+  return (
+    <div className="bubble-attachments">
+      {attachments.map((attachment) => (
+        <span className="attachment-chip" key={attachment.id}>
+          <span aria-hidden="true">{'\u{1F4CE}'}</span>
+          <span className="attachment-name">{attachment.filename}</span>
+          <span className="attachment-size">({humanFileSize(attachment.sizeBytes)})</span>
+          <a href={`/api/attachments/${attachment.id}`} target="_blank" rel="noreferrer">
+            Ver
+          </a>
+          <a href={`/api/attachments/${attachment.id}?download=1`}>Descargar</a>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AttachmentComposerBar({
+  attachments,
+  disabled,
+  onAddFiles,
+  onRemove
+}: {
+  attachments: StagedAttachment[];
+  disabled: boolean;
+  onAddFiles: (files: FileList) => void;
+  onRemove: (id: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="composer-attachments">
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        disabled={disabled}
+        onChange={(event) => {
+          if (event.target.files?.length) onAddFiles(event.target.files);
+          event.target.value = '';
+        }}
+      />
+      <button
+        type="button"
+        className="attach-button"
+        title="Adjuntar archivo"
+        aria-label="Adjuntar archivo"
+        disabled={disabled}
+        onClick={() => inputRef.current?.click()}
+      >
+        <span aria-hidden="true">{'\u{1F4CE}'}</span>
+      </button>
+      {attachments.map((attachment) => (
+        <span className={`attachment-chip staged ${attachment.status}`} key={attachment.id}>
+          {attachment.status === 'uploading' ? <span aria-hidden="true">&hellip;</span> : null}
+          {attachment.status === 'error' ? <span aria-hidden="true">{'\u26A0'}</span> : null}
+          <span className="attachment-name">{attachment.filename}</span>
+          <span className="attachment-size">({humanFileSize(attachment.sizeBytes)})</span>
+          <button
+            type="button"
+            aria-label={`Quitar adjunto ${attachment.filename}`}
+            onClick={() => onRemove(attachment.id)}
+          >
+            &times;
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ThreadPane({
   anchorTicketId,
   composerMode,
@@ -1198,7 +1366,11 @@ function ThreadPane({
   onRestoreTicket,
   pendingTicketId,
   selectedTicket,
-  submitting
+  submitting,
+  stagedAttachments,
+  canAttach,
+  onAddAttachmentFiles,
+  onRemoveAttachment
 }: {
   anchorTicketId: string | null;
   composerMode: ThreadResponse['composerMode'];
@@ -1217,6 +1389,10 @@ function ThreadPane({
   pendingTicketId: string | null;
   selectedTicket: Ticket | null;
   submitting: string | null;
+  stagedAttachments: StagedAttachment[];
+  canAttach: boolean;
+  onAddAttachmentFiles: (files: FileList) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
   const [expandedDiffs, setExpandedDiffs] = useState<Set<string>>(() => new Set());
 
@@ -1325,6 +1501,7 @@ function ThreadPane({
                   <p className="bubble-subject">{message.subject}</p>
                 ) : null}
                 <p className="bubble-text">{message.text}</p>
+                <MessageAttachments attachments={message.attachments} />
                 {message.tags.length ? (
                   <div className="bubble-tags">
                     <TagBadges tags={message.tags} />
@@ -1379,6 +1556,12 @@ function ThreadPane({
             </button>
           ))}
         </div>
+        <AttachmentComposerBar
+          attachments={stagedAttachments}
+          disabled={(!canReview && !canFollowUp) || !canAttach}
+          onAddFiles={onAddAttachmentFiles}
+          onRemove={onRemoveAttachment}
+        />
         <div className="composer-input-wrap">
           <textarea
             value={draft}
@@ -1394,9 +1577,10 @@ function ThreadPane({
             className="composer-send-button"
             type="button"
             disabled={
-              canReview
+              (canReview
                 ? !draft.trim() || submitting !== null
-                : !canFollowUp || !draft.trim() || submitting !== null
+                : !canFollowUp || !draft.trim() || submitting !== null) ||
+              stagedAttachments.some((attachment) => attachment.status === 'uploading')
             }
             aria-label={canReview ? 'Enviar respuesta' : 'Enviar mensaje'}
             title={canReview ? 'Enviar respuesta' : 'Enviar mensaje'}
@@ -1963,7 +2147,8 @@ function fixThreadMessage(message: ThreadMessage): ThreadMessage {
     customerName: fixMojibake(message.customerName),
     subject: fixMojibake(message.subject) || '',
     text: fixMojibake(message.text) || '',
-    tags: message.tags || []
+    tags: message.tags || [],
+    attachments: message.attachments || []
   };
 }
 
