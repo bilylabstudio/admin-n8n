@@ -21,6 +21,12 @@ describe('ticket status helpers', () => {
     expect(canUpdateFromIngest('edited_sent')).toBe(false);
     expect(canUpdateFromIngest('discarded')).toBe(false);
     expect(canUpdateFromIngest('manual')).toBe(false);
+    expect(canUpdateFromIngest('superseded')).toBe(false);
+  });
+
+  it('excludes superseded tickets from every inbox group', () => {
+    expect(isInboxGroup('superseded')).toBe(false);
+    expect(canReview('superseded')).toBe(false);
   });
 
   it('maps ingest payloads to the correct initial status', () => {
