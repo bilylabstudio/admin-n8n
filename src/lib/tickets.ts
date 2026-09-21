@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { db } from './db';
-import { canUpdateFromIngest, nextStatusAfterIngest } from './status';
+import { canUpdateFromIngest, nextStatusAfterIngest, openStatuses } from './status';
 
 const sentimentSchema = z.enum(['molesto', 'neutral', 'contento']);
 
@@ -151,5 +151,103 @@ export async function ingestTicket(input: IngestTicketInput) {
     }
   });
 
+  // This is a brand-new email (not a re-ingest of one we already had) and it
+  // landed in an open/actionable status: one customer/email = one active
+  // ticket, so fold any other still-open ticket(s) for this same customer
+  // into this new one instead of leaving several pending items behind.
+  if (!existing && openStatuses.includes(ticket.status)) {
+    await supersedeOpenSiblingTickets(ticket.customerEmail, ticket.id);
+  }
+
   return ticket;
+}
+
+async function supersedeOpenSiblingTickets(customerEmail: string, keepTicketId: string): Promise<void> {
+  const siblings = await db.ticket.findMany({
+    where: {
+      customerEmail,
+      id: { not: keepTicketId },
+      status: { in: openStatuses }
+    },
+    select: { id: true, status: true }
+  });
+
+  for (const sibling of siblings) {
+    await db.ticket.update({
+      where: { id: sibling.id },
+      data: { status: 'superseded' }
+    });
+    await db.auditEvent.create({
+      data: {
+        ticketId: sibling.id,
+        eventType: 'ticket_updated',
+        beforeStatus: sibling.status,
+        afterStatus: 'superseded',
+        metadataJson: {
+          reason: 'merged_into_newer_ticket',
+          superseded_by_ticket_id: keepTicketId
+        }
+      }
+    });
+  }
+}
+
+/**
+ * One-time/idempotent cleanup: for every customer with more than one open
+ * (non-terminal) ticket, keep only the most recently received one active
+ * and mark the rest as "superseded". Safe to run more than once — once a
+ * customer has at most one open ticket, it's a no-op for them.
+ */
+export async function mergeDuplicateOpenTickets(): Promise<{
+  customersProcessed: number;
+  ticketsSuperseded: number;
+}> {
+  const openTickets = await db.ticket.findMany({
+    where: { status: { in: openStatuses } },
+    select: { id: true, customerEmail: true, status: true },
+    orderBy: { receivedAt: 'desc' }
+  });
+
+  const byCustomer = new Map<string, typeof openTickets>();
+  for (const ticket of openTickets) {
+    const list = byCustomer.get(ticket.customerEmail);
+    if (list) {
+      list.push(ticket);
+    } else {
+      byCustomer.set(ticket.customerEmail, [ticket]);
+    }
+  }
+
+  let customersProcessed = 0;
+  let ticketsSuperseded = 0;
+
+  for (const ticketsForCustomer of byCustomer.values()) {
+    if (ticketsForCustomer.length < 2) continue;
+    customersProcessed += 1;
+
+    // Query above is ordered by receivedAt desc, so the first entry per
+    // customer is the newest one — keep it active, fold the rest.
+    const [keep, ...rest] = ticketsForCustomer;
+    for (const sibling of rest) {
+      await db.ticket.update({
+        where: { id: sibling.id },
+        data: { status: 'superseded' }
+      });
+      await db.auditEvent.create({
+        data: {
+          ticketId: sibling.id,
+          eventType: 'ticket_updated',
+          beforeStatus: sibling.status,
+          afterStatus: 'superseded',
+          metadataJson: {
+            reason: 'retroactive_merge',
+            superseded_by_ticket_id: keep.id
+          }
+        }
+      });
+      ticketsSuperseded += 1;
+    }
+  }
+
+  return { customersProcessed, ticketsSuperseded };
 }
