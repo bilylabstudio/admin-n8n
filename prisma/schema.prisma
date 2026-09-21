@@ -16,6 +16,7 @@ enum TicketStatus {
   discarded
   manual
   send_failed
+  superseded
 }
 
 enum AuditEventType {
