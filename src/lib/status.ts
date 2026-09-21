@@ -13,8 +13,14 @@ export const terminalStatuses: TicketStatus[] = [
   'approved_sent',
   'edited_sent',
   'discarded',
-  'manual'
+  'manual',
+  'superseded'
 ];
+
+// Statuses that mean "this ticket is still an open, actionable item" for a
+// customer. Used to decide whether a new inbound email should be merged
+// into an existing ticket instead of creating a brand-new one.
+export const openStatuses: TicketStatus[] = ['new', 'ai_generated', 'pending_review', 'send_failed'];
 
 export const inboxGroups: { id: InboxGroup; label: string; statuses: TicketStatus[] }[] = [
   { id: 'pending_review', label: 'Por revisar', statuses: ['pending_review'] },
@@ -34,7 +40,8 @@ export const statusLabels: Record<TicketStatus, string> = {
   edited_sent: 'Editado y enviado',
   discarded: 'Descartado',
   manual: 'Manual',
-  send_failed: 'Error de envio'
+  send_failed: 'Error de envio',
+  superseded: 'Combinado con otro mensaje'
 };
 
 export const statusTone: Record<TicketStatus, 'pending' | 'error' | 'neutral' | 'success' | 'manual' | 'muted'> = {
@@ -45,7 +52,8 @@ export const statusTone: Record<TicketStatus, 'pending' | 'error' | 'neutral' | 
   edited_sent: 'success',
   discarded: 'muted',
   manual: 'manual',
-  send_failed: 'error'
+  send_failed: 'error',
+  superseded: 'muted'
 };
 
 export function canUpdateFromIngest(status: TicketStatus): boolean {
