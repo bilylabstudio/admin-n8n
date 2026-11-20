@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
-import { requireSalesApiAccess } from '@/lib/sales-auth';
+import { currentUser } from '@/lib/auth';
 import {
   PANEL_PLATFORMS,
   PANEL_TIME_ZONE,
@@ -200,8 +200,9 @@ function totalsByPlatform(rows: DailyPlatformRow[]): Record<string, PlatformTota
 }
 
 export async function GET(request: Request) {
-  const accessError = await requireSalesApiAccess();
-  if (accessError) return accessError;
+  // De momento basta con el login del inbox (sin contraseña de ventas). Ver src/app/panel/page.tsx.
+  const user = await currentUser();
+  if (!user) return Response.json({ ok: false, error: 'No autorizado' }, { status: 401 });
 
   const url = new URL(request.url);
   const resolved = resolvePanelRange({

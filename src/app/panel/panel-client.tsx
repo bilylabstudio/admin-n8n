@@ -174,7 +174,7 @@ export function PanelClient() {
     try {
       const res = await fetch(`/api/panel?${params.toString()}`, { cache: 'no-store' });
       if (res.status === 401 || res.status === 403) {
-        window.location.href = '/ventas/login';
+        window.location.href = '/login';
         return;
       }
       const json = await res.json();
