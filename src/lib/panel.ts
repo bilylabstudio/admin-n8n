@@ -205,6 +205,12 @@ export type DailyPlatformRow = {
   allOrders: number; // todos los pedidos no cancelados ni test
   pendingOrders: number;
   zeroAmountOrders: number; // pedidos (venta o pendientes) con total 0
+  // Desglose al estilo del informe de Shopify (sin IVA). Solo se rellena en Shopify.
+  productGross?: number; // ventas brutas de producto
+  discounts?: number;
+  returns?: number; // devoluciones contadas en la fecha del reembolso
+  taxes?: number; // impuestos de las ventas menos los devueltos
+  shipping?: number; // envios cobrados (con IVA), fuera de las ventas netas
 };
 
 export type MoneyAdjustments = {
@@ -224,6 +230,11 @@ export type PlatformTotals = {
   allOrders: number;
   pendingOrders: number;
   zeroAmountOrders: number;
+  productGross: number;
+  discounts: number;
+  returns: number;
+  taxes: number;
+  shipping: number;
 };
 
 const EMPTY_TOTALS: PlatformTotals = {
@@ -235,7 +246,12 @@ const EMPTY_TOTALS: PlatformTotals = {
   refundedOrders: 0,
   allOrders: 0,
   pendingOrders: 0,
-  zeroAmountOrders: 0
+  zeroAmountOrders: 0,
+  productGross: 0,
+  discounts: 0,
+  returns: 0,
+  taxes: 0,
+  shipping: 0
 };
 
 export function sumRows(rows: DailyPlatformRow[]): PlatformTotals {
@@ -250,6 +266,11 @@ export function sumRows(rows: DailyPlatformRow[]): PlatformTotals {
     t.allOrders += r.allOrders;
     t.pendingOrders += r.pendingOrders;
     t.zeroAmountOrders += r.zeroAmountOrders;
+    t.productGross += r.productGross ?? 0;
+    t.discounts += r.discounts ?? 0;
+    t.returns += r.returns ?? 0;
+    t.taxes += r.taxes ?? 0;
+    t.shipping += r.shipping ?? 0;
   }
   return t;
 }

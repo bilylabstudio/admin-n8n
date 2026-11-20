@@ -36,6 +36,18 @@ type Channel = {
   };
 };
 
+type ShopifyReport = {
+  orders: number;
+  units: number;
+  grossSales: number;
+  discounts: number;
+  returns: number;
+  netSales: number;
+  taxes: number;
+  totalSales: number;
+  shipping: number;
+};
+
 type Alert = { level: 'critical' | 'warning' | 'info'; platform: string | null; title: string; detail: string };
 
 type PanelResponse = {
@@ -53,6 +65,7 @@ type PanelResponse = {
   deltas: Record<'netSales' | 'grossSales' | 'orders' | 'aov' | 'contribution' | 'refundRate', number | null>;
   channels: Channel[];
   marketing: { totalAds: number; totalFees: number; mer: number | null };
+  shopifyReport: { current: ShopifyReport; previous: ShopifyReport };
   forecast: {
     month: string;
     daysElapsed: number;
@@ -133,6 +146,9 @@ function bucketLabel(key: string, g: 'day' | 'week' | 'month', long = false) {
   if (g === 'month') return monthLabel(key, long);
   if (g === 'week') return `${long ? 'Semana del ' : ''}${dayLabel(key)}`;
   return long ? dayLabel(key, { weekday: 'short', day: 'numeric', month: 'short' }) : dayLabel(key);
+}
+function capitalize(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 function relativeTime(iso: string | null) {
   if (!iso) return 'nunca';
@@ -268,6 +284,7 @@ export function PanelClient() {
             <SalesChart data={data} />
             <ForecastCard data={data} />
           </div>
+          <ShopifyReportCard data={data} />
           <ChannelTable data={data} />
           <TrendChart data={data} />
           <div className={styles.grid2even}>
@@ -324,7 +341,7 @@ function KpiRow({ data }: { data: PanelResponse }) {
   const estimated = data.channels.some((c) => c.kpis.orders > 0 && (c.contribution.feesSource !== 'api' || c.contribution.adsSource !== 'api'));
   const tiles = [
     { label: 'Ventas netas', hint: 'Sin IVA y descontadas devoluciones', value: money(k.netSales), prev: money(p.netSales), delta: <Delta value={data.deltas.netSales} /> },
-    { label: 'Facturación', hint: 'Con IVA', value: money(k.grossSales), prev: money(p.grossSales), delta: <Delta value={data.deltas.grossSales} /> },
+    { label: 'Ventas totales', hint: 'Netas + IVA', value: money(k.grossSales), prev: money(p.grossSales), delta: <Delta value={data.deltas.grossSales} /> },
     { label: 'Pedidos', hint: `${int.format(k.units)} unidades`, value: int.format(k.orders), prev: int.format(p.orders), delta: <Delta value={data.deltas.orders} /> },
     { label: 'Ticket medio', hint: 'Venta neta por pedido', value: eur2.format(k.aov), prev: eur2.format(p.aov), delta: <Delta value={data.deltas.aov} /> },
     {
@@ -534,7 +551,7 @@ function ForecastCard({ data }: { data: PanelResponse }) {
         <p className={styles.muted}>Disponible a partir del segundo día del mes.</p>
       ) : (
         <>
-          <p className={styles.forecastMonth}>{monthLabel(f.month, true)}</p>
+          <p className={styles.forecastMonth}>{capitalize(monthLabel(f.month, true))}</p>
           <p className={styles.forecastValue}>{money(f.projectedNet)}</p>
           <p className={styles.muted}>al ritmo medio del mes ({f.daysElapsed} de {f.daysInMonth} días)</p>
           <div className={styles.progress} aria-hidden>
@@ -558,6 +575,61 @@ function ForecastCard({ data }: { data: PanelResponse }) {
           </dl>
         </>
       )}
+    </section>
+  );
+}
+
+// ----------------------------- Informe Shopify -----------------------------
+
+function ShopifyReportCard({ data }: { data: PanelResponse }) {
+  const c = data.shopifyReport.current;
+  const p = data.shopifyReport.previous;
+  const rows: { label: string; key: keyof ShopifyReport; sign?: '-'; strong?: boolean }[] = [
+    { label: 'Ventas brutas', key: 'grossSales' },
+    { label: 'Descuentos', key: 'discounts', sign: '-' },
+    { label: 'Reversiones de ventas', key: 'returns', sign: '-' },
+    { label: 'Ventas netas', key: 'netSales', strong: true },
+    { label: 'Impuestos', key: 'taxes' },
+    { label: 'Ventas totales', key: 'totalSales', strong: true }
+  ];
+  if (!c.orders && !c.grossSales) return null;
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardHead}>
+        <h2>Shopify · mismo criterio que el informe de Shopify</h2>
+        <span className={styles.muted}>«Copia de ventas por variante de producto» · sin envíos</span>
+      </div>
+      <div className={styles.tableScroll}>
+        <table className={styles.table}>
+          <thead>
+            <tr>
+              <th>Concepto</th>
+              <th className={styles.num}>Periodo</th>
+              <th className={styles.num}>Periodo anterior</th>
+              <th className={styles.num}>Var.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const cur = c[r.key];
+              const prev = p[r.key];
+              const fmtv = (v: number) => (r.sign && v ? `−${eur2.format(v)}` : eur2.format(v));
+              return (
+                <tr key={r.key}>
+                  <td>{r.strong ? <strong>{r.label}</strong> : r.label}</td>
+                  <td className={styles.num}>{r.strong ? <strong>{fmtv(cur)}</strong> : fmtv(cur)}</td>
+                  <td className={styles.num}>{data.hasPrevious ? fmtv(prev) : '—'}</td>
+                  <td className={styles.num}>{data.hasPrevious ? <Delta value={prev ? ((cur - prev) / Math.abs(prev)) * 100 : null} invert={Boolean(r.sign)} /> : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className={styles.footnote}>
+        {int.format(c.orders)} pedidos · {int.format(c.units)} unidades · envíos cobrados aparte: {eur2.format(c.shipping)} (con IVA).
+        Las devoluciones cuentan el día del reembolso, como en Shopify.
+      </p>
     </section>
   );
 }

@@ -22,6 +22,7 @@ import {
   type DateWindow,
   type PlatformTotals
 } from '@/lib/panel';
+import { shopifyDailyRows } from './shopify-sales';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +43,30 @@ function utcBounds(w: DateWindow): { from: Date; to: Date } {
   return { from: new Date(`${addDays(w.start, -1)}T00:00:00Z`), to: new Date(`${addDays(w.end, 2)}T00:00:00Z`) };
 }
 
+// Cache corto en memoria: el calculo de Shopify recorre el JSON de cada pedido.
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const cache = new Map<string, { at: number; value: Promise<unknown> }>();
+function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as Promise<T>;
+  const value = fn().catch((error) => {
+    cache.delete(key);
+    throw error;
+  });
+  cache.set(key, { at: Date.now(), value });
+  if (cache.size > 200) cache.delete(cache.keys().next().value as string);
+  return value;
+}
+
 async function dailyRows(w: DateWindow): Promise<DailyPlatformRow[]> {
+  return cached(`daily:${w.start}:${w.end}`, async () => {
+    const [shopify, others] = await Promise.all([shopifyDailyRows(w), otherPlatformRows(w)]);
+    return [...shopify, ...others];
+  });
+}
+
+// Amazon / TikTok: criterio del panel financiero (pedidos cobrados, sin IVA).
+async function otherPlatformRows(w: DateWindow): Promise<DailyPlatformRow[]> {
   const { from, to } = utcBounds(w);
   const rows = await db.$queryRaw<Record<string, unknown>[]>`
     SELECT to_char(("processedAt" AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}, 'YYYY-MM-DD') AS day,
@@ -58,6 +82,7 @@ async function dailyRows(w: DateWindow): Promise<DailyPlatformRow[]> {
            count(*) FILTER (WHERE "totalPrice" = 0 AND ("financialStatus" = 'pending' OR ${IS_SALE})) AS zero_orders
     FROM "PlatformOrder"
     WHERE "processedAt" >= ${from} AND "processedAt" < ${to}
+      AND platform <> 'shopify'
       AND "cancelledAt" IS NULL AND "isTest" = false
       AND "financialStatus" <> 'voided'
     GROUP BY 1, 2`;
@@ -100,7 +125,25 @@ async function moneyByPlatform(w: DateWindow) {
   return { feesByPlatform: toMap(fees), adsByPlatform: toMap(ads) };
 }
 
-async function monthlyTrend(fromMonth: string) {
+async function monthlyTrend(fromMonth: string, today: string) {
+  return cached(`trend:${fromMonth}:${today}`, async () => {
+    const [shopify, others] = await Promise.all([
+      shopifyDailyRows({ start: `${fromMonth}-01`, end: today }),
+      otherMonthlyTrend(fromMonth)
+    ]);
+    const months = new Map<string, { month: string; platform: string; orders: number; net: number }>();
+    for (const row of shopify) {
+      const month = row.day.slice(0, 7);
+      const cur = months.get(month) ?? { month, platform: 'shopify', orders: 0, net: 0 };
+      cur.orders += row.orders;
+      cur.net += row.netSales;
+      months.set(month, cur);
+    }
+    return [...months.values(), ...others].sort((a, b) => a.month.localeCompare(b.month));
+  });
+}
+
+async function otherMonthlyTrend(fromMonth: string) {
   const from = new Date(`${addDays(`${fromMonth}-01`, -1)}T00:00:00Z`);
   const rows = await db.$queryRaw<Record<string, unknown>[]>`
     SELECT to_char(("processedAt" AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}, 'YYYY-MM') AS month,
@@ -108,7 +151,7 @@ async function monthlyTrend(fromMonth: string) {
            count(*) AS orders,
            coalesce(sum(${NET_SQL}), 0) AS net
     FROM "PlatformOrder"
-    WHERE "processedAt" >= ${from}
+    WHERE "processedAt" >= ${from} AND platform <> 'shopify'
       AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE}
     GROUP BY 1, 2
     ORDER BY 1`;
@@ -191,6 +234,21 @@ async function freshness() {
   });
 }
 
+function shopifyReport(t: PlatformTotals | undefined) {
+  const v = t ?? sumRows([]);
+  return {
+    orders: v.orders,
+    units: v.units,
+    grossSales: round2(v.productGross),
+    discounts: round2(v.discounts),
+    returns: round2(v.returns),
+    netSales: round2(v.netSales),
+    taxes: round2(v.taxes),
+    totalSales: round2(v.netSales + v.taxes),
+    shipping: round2(v.shipping)
+  };
+}
+
 function totalsByPlatform(rows: DailyPlatformRow[]): Record<string, PlatformTotals> {
   const out: Record<string, PlatformTotals> = {};
   for (const platform of new Set([...PANEL_PLATFORMS, ...rows.map((r) => r.platform)])) {
@@ -232,7 +290,7 @@ export async function GET(request: Request) {
       moneyByPlatform(range.current),
       moneyByPlatform(range.previous),
       db.financialSetting.findMany({ select: { platform: true, key: true, value: true } }),
-      monthlyTrend(trendFrom),
+      monthlyTrend(trendFrom, range.today),
       customerMix(range.current),
       topCountries(range.current),
       freshness()
@@ -303,6 +361,10 @@ export async function GET(request: Request) {
       share: round2((c.kpis.netSales / totalNet) * 100),
       delta: pctChange(c.kpis.netSales, c.previous.netSales)
     })),
+    shopifyReport: {
+      current: shopifyReport(curTotals.shopify),
+      previous: shopifyReport(prevTotals.shopify)
+    },
     marketing: {
       totalAds: round2(totalAds),
       totalFees: round2(totalFees),

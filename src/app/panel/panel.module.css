@@ -386,7 +386,6 @@
   margin: 0;
   color: var(--ink-soft);
   font-size: 13px;
-  text-transform: capitalize;
 }
 
 .forecastValue {
