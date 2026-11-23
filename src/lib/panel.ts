@@ -532,7 +532,7 @@ export function buildAlerts(input: {
         level: 'critical',
         platform,
         title: `${label}: pedidos sin importe`,
-        detail: `${totals.zeroAmountOrders.toLocaleString('es-ES')} pedidos (${share}%) del periodo llegan con importe 0 €. Las ventas de ${label} estan infravaloradas.`
+        detail: `${totals.zeroAmountOrders.toLocaleString('es-ES')} pedidos (${share}%) con más de 3 días siguen sin importe (0 €). Las ventas de ${label} estan infravaloradas.`
       });
     }
 
@@ -541,7 +541,7 @@ export function buildAlerts(input: {
         level: 'warning',
         platform,
         title: `${label}: muchos pedidos pendientes`,
-        detail: `${totals.pendingOrders.toLocaleString('es-ES')} pedidos siguen en "pendiente" y no cuentan como venta.`
+        detail: `${totals.pendingOrders.toLocaleString('es-ES')} pedidos con más de 3 días siguen en "pendiente" y no cuentan como venta.`
       });
     }
 

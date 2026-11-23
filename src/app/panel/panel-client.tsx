@@ -720,6 +720,10 @@ function ChannelTable({ data }: { data: PanelResponse }) {
         </table>
       </div>
       <p className={styles.footnote}>
+        <strong>Fuentes:</strong> Shopify con el mismo criterio que su informe «Ventas por variante de producto» (ventas netas sin
+        IVA ni envíos). Amazon desde la API de pedidos de Amazon: importe total de los pedidos cobrados, con IVA, envío y
+        promociones; puede diferir de Vendorati, que usa su propio criterio.
+        <br />
         Las cifras marcadas como <em>estimada</em> usan las tasas del panel financiero de /ventas (comisión por pedido, % de
         venta y coste por unidad). Se sustituyen solas por datos reales cuando se sincronizan comisiones y publicidad.
       </p>

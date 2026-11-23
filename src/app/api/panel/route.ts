@@ -78,8 +78,9 @@ async function otherPlatformRows(w: DateWindow): Promise<DailyPlatformRow[]> {
            coalesce(sum("totalRefunded"), 0) AS refunded,
            count(*) FILTER (WHERE "totalRefunded" > 0 OR "financialStatus" IN ('refunded', 'partially_refunded')) AS refunded_orders,
            count(*) AS all_orders,
-           count(*) FILTER (WHERE "financialStatus" = 'pending') AS pending_orders,
-           count(*) FILTER (WHERE "totalPrice" = 0 AND ("financialStatus" = 'pending' OR ${IS_SALE})) AS zero_orders
+           -- Solo pedidos de mas de 3 dias: los recientes pendientes de cobro son normales (Amazon).
+           count(*) FILTER (WHERE "financialStatus" = 'pending' AND "processedAt" < now() - interval '3 days') AS pending_orders,
+           count(*) FILTER (WHERE "totalPrice" = 0 AND ("financialStatus" = 'pending' OR ${IS_SALE}) AND "processedAt" < now() - interval '3 days') AS zero_orders
     FROM "PlatformOrder"
     WHERE "processedAt" >= ${from} AND "processedAt" < ${to}
       AND platform <> 'shopify'
