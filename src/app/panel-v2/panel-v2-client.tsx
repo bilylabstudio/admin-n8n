@@ -866,6 +866,7 @@ export function PanelV2Client() {
   }, [query, preset, params]);
 
   useEffect(() => {
+    if (!data) return;
     const onScroll = () => {
       let current = SECTIONS[0].id;
       for (const x of SECTIONS) {
