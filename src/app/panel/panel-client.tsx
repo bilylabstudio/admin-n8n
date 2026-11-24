@@ -113,7 +113,7 @@ const PRESETS = [
 const COUNTRY_NAMES: Record<string, string> = {
   ES: 'España', PT: 'Portugal', FR: 'Francia', IT: 'Italia', DE: 'Alemania', GB: 'Reino Unido',
   NL: 'Países Bajos', BE: 'Bélgica', IE: 'Irlanda', AT: 'Austria', CH: 'Suiza', US: 'Estados Unidos',
-  MX: 'México', AD: 'Andorra', PL: 'Polonia', SE: 'Suecia', '??': 'Sin país'
+  MX: 'México', AD: 'Andorra', PL: 'Polonia', SE: 'Suecia', SK: 'Eslovaquia', LU: 'Luxemburgo', DK: 'Dinamarca', FI: 'Finlandia', CZ: 'Chequia', GR: 'Grecia', NO: 'Noruega', HU: 'Hungría', RO: 'Rumanía', BG: 'Bulgaria', HR: 'Croacia', SI: 'Eslovenia', LT: 'Lituania', LV: 'Letonia', EE: 'Estonia', CY: 'Chipre', MT: 'Malta', '??': 'Sin país'
 };
 
 // ----------------------------- Formato -----------------------------

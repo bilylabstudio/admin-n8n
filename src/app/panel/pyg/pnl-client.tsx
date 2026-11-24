@@ -356,7 +356,8 @@ function ChannelPnl({
   const rev = result.revenue;
   const share = (v: number) => (rev ? pct((v / rev) * 100) : '—');
   const lineByKey = new Map(result.lines.map((l) => [l.key, l]));
-  const showRules = editing ? rules : rules.filter((r) => r.active);
+  const factorRule = rules.find((r) => r.kind === 'units_factor');
+  const showRules = (editing ? rules : rules.filter((r) => r.active)).filter((r) => r.kind !== 'units_factor');
 
   return (
     <section className={styles.card} style={{ borderTop: `3px solid ${COLOR[platform]}` }}>
@@ -379,6 +380,26 @@ function ChannelPnl({
             </tr>
           </thead>
           <tbody>
+            {factorRule && (
+              <tr className={factorRule.active ? undefined : p.inactive}>
+                <td title={factorRule.note}>
+                  {editing && (
+                    <input type="checkbox" className={p.check} checked={factorRule.active} aria-label={`Usar ${factorRule.label}`} onChange={(e) => onRule(factorRule, { active: e.target.checked })} />
+                  )}
+                  {factorRule.label}
+                  {factorRule.note && <span className={p.noteMark} aria-label={factorRule.note}> ⓘ</span>}
+                </td>
+                <td className={p.rule}>
+                  {editing ? (
+                    <RuleInput rule={factorRule} busy={saving === `${platform}:${factorRule.key}`} onSave={(v) => onRule(factorRule, { value: v })} />
+                  ) : (
+                    `${int.format(result.units)} artículos × ${factorRule.value.toLocaleString('es-ES')}`
+                  )}
+                </td>
+                <td className={styles.num}>{int.format(result.costUnits)} botes</td>
+                <td colSpan={3} className={p.rule}>Base de los costes por unidad</td>
+              </tr>
+            )}
             <tr className={p.revenueRow}>
               <td>Facturación</td>
               <td />
@@ -471,7 +492,7 @@ function ChannelPnl({
 
 function RuleInput({ rule, busy, onSave }: { rule: PnlRule; busy: boolean; onSave: (v: number) => void }) {
   const [value, setValue] = useState(String(rule.value).replace('.', ','));
-  const unit = rule.kind === 'pct_revenue' ? '% fact.' : rule.kind === 'pct_ads' ? '% publi.' : rule.kind === 'per_unit' ? '€/ud' : rule.kind === 'per_order' ? '€/pedido' : '€/mes';
+  const unit = rule.kind === 'pct_revenue' ? '% fact.' : rule.kind === 'pct_ads' ? '% publi.' : rule.kind === 'per_unit' ? '€/ud' : rule.kind === 'per_order' ? '€/pedido' : rule.kind === 'units_factor' ? 'botes' : '€/mes';
   return (
     <span className={p.inputWrap}>
       <input

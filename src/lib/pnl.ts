@@ -1,7 +1,7 @@
 // P&L estimado por canal a partir de supuestos (% de facturacion, € por unidad, € por pedido, fijos al mes),
 // siguiendo el modelo del Excel del cliente (2026ecomerce.xlsx). Logica pura, sin base de datos.
 
-export type PnlKind = 'pct_revenue' | 'per_unit' | 'per_order' | 'fixed_month' | 'pct_ads';
+export type PnlKind = 'pct_revenue' | 'per_unit' | 'per_order' | 'fixed_month' | 'pct_ads' | 'units_factor';
 export type PnlGroup = 'ads' | 'marketing' | 'operations' | 'product' | 'fixed';
 
 export type PnlRuleDef = {
@@ -37,6 +37,7 @@ export const DEFAULT_PNL_RULES: PnlRuleDef[] = [
   { platform: 'shopify', key: 'product', label: 'Producto', kind: 'per_unit', group: 'product', value: 1.46 },
   { platform: 'shopify', key: 'customer_service', label: 'Atención al cliente', kind: 'fixed_month', group: 'fixed', value: 10000, note: '120.000 € al año.' },
 
+  { platform: 'amazon', key: 'units_factor', label: 'Botes por artículo vendido', kind: 'units_factor', group: 'product', value: 1.7, note: 'Amazon cuenta artículos (packs). Excel: 164.680 uds a 18,17 €; API: ~95.000 artículos a ~30,7 € para la misma facturación → ≈1,7 botes por artículo.' },
   { platform: 'amazon', key: 'amazon_ads', label: 'Publicidad Amazon', kind: 'pct_revenue', group: 'ads', value: 12 },
   { platform: 'amazon', key: 'ads_agency', label: 'Gestión de anuncios', kind: 'pct_ads', group: 'marketing', value: 5, note: '5 % del gasto en publicidad de Amazon.' },
   { platform: 'amazon', key: 'videos', label: 'Producción de vídeos', kind: 'per_unit', group: 'marketing', value: 1.5 },
@@ -66,6 +67,8 @@ export function ruleText(r: Pick<PnlRule, 'kind' | 'value'>): string {
       return `${n(r.value)} € por pedido`;
     case 'fixed_month':
       return `${n(r.value)} € al mes`;
+    case 'units_factor':
+      return `× ${n(r.value)}`;
   }
 }
 
@@ -89,6 +92,8 @@ export type PnlLine = {
 export type PnlResult = {
   revenue: number;
   units: number;
+  /** Unidades para costes por unidad (unidades × factor de botes). */
+  costUnits: number;
   orders: number;
   lines: PnlLine[];
   estimatedCosts: number;
@@ -104,18 +109,20 @@ export type PnlResult = {
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export function computePnl(rules: PnlRule[], m: PnlMetrics, actuals: Record<string, number> = {}): PnlResult {
-  const active = rules.filter((r) => r.active);
+  const factorRule = rules.find((r) => r.kind === 'units_factor' && r.active);
+  const costUnits = m.units * (factorRule ? factorRule.value : 1);
+  const active = rules.filter((r) => r.active && r.kind !== 'units_factor');
   const base = (r: PnlRule) => {
     switch (r.kind) {
       case 'pct_revenue':
         return (m.revenue * r.value) / 100;
       case 'per_unit':
-        return m.units * r.value;
+        return costUnits * r.value;
       case 'per_order':
         return m.orders * r.value;
       case 'fixed_month':
         return r.value * m.monthFraction;
-      case 'pct_ads':
+      default:
         return 0;
     }
   };
@@ -137,6 +144,7 @@ export function computePnl(rules: PnlRule[], m: PnlMetrics, actuals: Record<stri
   return {
     revenue: r2(m.revenue),
     units: m.units,
+    costUnits: Math.round(costUnits),
     orders: m.orders,
     lines,
     estimatedCosts: r2(estimatedCosts),
@@ -156,10 +164,12 @@ export function sumPnl(results: PnlResult[]): PnlResult {
   const lines = new Map<string, PnlLine>();
   let revenue = 0;
   let units = 0;
+  let costUnits = 0;
   let orders = 0;
   for (const res of results) {
     revenue += res.revenue;
     units += res.units;
+    costUnits += res.costUnits;
     orders += res.orders;
     for (const l of res.lines) {
       const cur = lines.get(l.key);
@@ -177,6 +187,7 @@ export function sumPnl(results: PnlResult[]): PnlResult {
   return {
     revenue: r2(revenue),
     units,
+    costUnits,
     orders,
     lines: all,
     estimatedCosts: r2(estimatedCosts),

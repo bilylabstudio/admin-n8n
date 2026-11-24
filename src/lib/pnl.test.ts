@@ -26,7 +26,7 @@ describe('P&L', () => {
     const est = computePnl(rules, m);
     const real = computePnl(rules, m, { amazon_ads: 200 });
     expect(real.estimatedMargin).toBe(est.estimatedMargin);
-    expect(real.blendedMargin).toBe(est.blendedMargin - 80);
+    expect(real.blendedMargin).toBeCloseTo(est.blendedMargin - 80, 2);
     expect(real.actualLines).toBe(1);
   });
 
@@ -36,6 +36,16 @@ describe('P&L', () => {
     expect(p.lines.find((l) => l.key === 'customer_service')!.estimated).toBe(5000);
     expect(p.lines.some((l) => l.key === 'meta_ads')).toBe(false);
     expect(p.estimatedMarginRate).toBeNull();
+  });
+});
+
+describe('factor de botes', () => {
+  it('multiplica las unidades solo en costes por unidad', () => {
+    const rules = mergeRules([]).filter((r) => r.platform === 'amazon');
+    const p = computePnl(rules, { revenue: 1000, units: 10, orders: 5, monthFraction: 1 });
+    expect(p.costUnits).toBe(17);
+    expect(p.lines.find((l) => l.key === 'product')!.estimated).toBeCloseTo(17 * 1.46, 2);
+    expect(p.lines.some((l) => l.key === 'units_factor')).toBe(false);
   });
 });
 
