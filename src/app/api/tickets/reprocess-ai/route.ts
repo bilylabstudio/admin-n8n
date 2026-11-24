@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     ? await db.ticket.findMany({ where: { id: { in: ids } } })
     : await db.ticket.findMany({
         where: {
-          riskFlags: { contains: 'fallback_agent_empty_reply' },
+          OR: [{ intent: 'fallback_agent_empty_reply' }, { riskFlags: { contains: 'agent_empty_reply' } }],
           receivedAt: { gte: new Date(fallback_since || Date.now() - 3 * 86_400_000) }
         },
         orderBy: { receivedAt: 'asc' },
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
 
     const reply = String(agentResp.reply || '').trim();
     const riskFlags = String(agentResp.risk_flags || '');
-    if (!reply || riskFlags.includes('fallback_agent_empty_reply')) {
+    if (!reply || riskFlags.includes('agent_empty_reply') || String(agentResp.intent || '') === 'fallback_agent_empty_reply') {
       results.push({ id: ticket.id, ok: false, error: 'agent_empty_reply' });
       continue;
     }
