@@ -95,7 +95,9 @@ type PanelResponse = {
 
 // ----------------------------- Constantes -----------------------------
 
-const PLATFORMS = ['shopify', 'amazon', 'tiktok_shop'] as const;
+// TikTok Shop oculto de momento (no borrado). Para mostrarlo: añadir 'tiktok_shop' aquí y quitarlo
+// de HIDDEN_PANEL_PLATFORMS en src/lib/panel.ts.
+const PLATFORMS = ['shopify', 'amazon'] as const;
 const PLATFORM_LABELS: Record<string, string> = { shopify: 'Shopify', amazon: 'Amazon', tiktok_shop: 'TikTok Shop' };
 // Orden fijo de color por canal (validado para daltonismo; ver skill dataviz).
 const PLATFORM_COLORS: Record<string, string> = { shopify: '#334fb4', amazon: '#e08a2c', tiktok_shop: '#a891f6' };

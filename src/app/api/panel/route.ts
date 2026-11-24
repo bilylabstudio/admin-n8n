@@ -2,7 +2,9 @@ import { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { currentUser } from '@/lib/auth';
 import {
+  HIDDEN_PANEL_PLATFORMS,
   PANEL_PLATFORMS,
+  isHiddenPlatform,
   PANEL_TIME_ZONE,
   SALE_STATUSES,
   addDays,
@@ -37,6 +39,10 @@ const GROSS_SQL = Prisma.sql`CASE WHEN platform = 'amazon'
   THEN subtotal + "totalShipping" + "totalTax"
   ELSE subtotal + "totalShipping" END`;
 const IS_SALE = Prisma.sql`"financialStatus" IN (${Prisma.join(SALE_STATUSES)})`;
+// Excluye los canales ocultos del panel (p. ej. TikTok Shop).
+const VISIBLE = HIDDEN_PANEL_PLATFORMS.length
+  ? Prisma.sql`platform NOT IN (${Prisma.join([...HIDDEN_PANEL_PLATFORMS])})`
+  : Prisma.sql`TRUE`;
 
 // Margen de un dia a cada lado para cubrir el desfase UTC/Madrid y aprovechar el indice.
 function utcBounds(w: DateWindow): { from: Date; to: Date } {
@@ -83,7 +89,7 @@ async function otherPlatformRows(w: DateWindow): Promise<DailyPlatformRow[]> {
            count(*) FILTER (WHERE "totalPrice" = 0 AND ("financialStatus" = 'pending' OR ${IS_SALE}) AND "processedAt" < now() - interval '3 days') AS zero_orders
     FROM "PlatformOrder"
     WHERE "processedAt" >= ${from} AND "processedAt" < ${to}
-      AND platform <> 'shopify'
+      AND platform <> 'shopify' AND ${VISIBLE}
       AND "cancelledAt" IS NULL AND "isTest" = false
       AND "financialStatus" <> 'voided'
     GROUP BY 1, 2`;
@@ -152,7 +158,7 @@ async function otherMonthlyTrend(fromMonth: string) {
            count(*) AS orders,
            coalesce(sum(${NET_SQL}), 0) AS net
     FROM "PlatformOrder"
-    WHERE "processedAt" >= ${from} AND platform <> 'shopify'
+    WHERE "processedAt" >= ${from} AND platform <> 'shopify' AND ${VISIBLE}
       AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE}
     GROUP BY 1, 2
     ORDER BY 1`;
@@ -172,7 +178,7 @@ async function customerMix(w: DateWindow) {
       FROM "PlatformOrder"
       WHERE "processedAt" >= ${from} AND "processedAt" < ${to}
         AND to_char(("processedAt" AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}, 'YYYY-MM-DD') BETWEEN ${w.start} AND ${w.end}
-        AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE}
+        AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE} AND ${VISIBLE}
         AND "customerEmail" IS NOT NULL AND "customerEmail" <> ''
       GROUP BY 1, 2
     )
@@ -206,7 +212,7 @@ async function topCountries(w: DateWindow) {
     FROM "PlatformOrder"
     WHERE "processedAt" >= ${from} AND "processedAt" < ${to}
       AND to_char(("processedAt" AT TIME ZONE 'UTC') AT TIME ZONE ${TZ}, 'YYYY-MM-DD') BETWEEN ${w.start} AND ${w.end}
-      AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE}
+      AND "cancelledAt" IS NULL AND "isTest" = false AND ${IS_SALE} AND ${VISIBLE}
     GROUP BY 1
     ORDER BY 3 DESC
     LIMIT 8`;
@@ -252,7 +258,7 @@ function shopifyReport(t: PlatformTotals | undefined) {
 
 function totalsByPlatform(rows: DailyPlatformRow[]): Record<string, PlatformTotals> {
   const out: Record<string, PlatformTotals> = {};
-  for (const platform of new Set([...PANEL_PLATFORMS, ...rows.map((r) => r.platform)])) {
+  for (const platform of new Set([...PANEL_PLATFORMS, ...rows.map((r) => r.platform)].filter((p) => !isHiddenPlatform(p)))) {
     out[platform] = sumRows(rows.filter((r) => r.platform === platform));
   }
   return out;
@@ -299,7 +305,7 @@ export async function GET(request: Request) {
 
   const curTotals = totalsByPlatform(currentRows);
   const prevTotals = totalsByPlatform(previousRows);
-  const platforms = [...new Set([...PANEL_PLATFORMS, ...Object.keys(curTotals)])];
+  const platforms = [...new Set([...PANEL_PLATFORMS, ...Object.keys(curTotals)])].filter((p) => !isHiddenPlatform(p));
 
   const channels = platforms.map((platform) => {
     const cur = curTotals[platform];

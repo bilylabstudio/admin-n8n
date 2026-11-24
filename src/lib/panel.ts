@@ -3,8 +3,19 @@
 
 import { resolveRates } from './financial-ledger';
 
-export const PANEL_PLATFORMS = ['shopify', 'amazon', 'tiktok_shop'] as const;
-export type PanelPlatform = (typeof PANEL_PLATFORMS)[number];
+export const ALL_PANEL_PLATFORMS = ['shopify', 'amazon', 'tiktok_shop'] as const;
+export type PanelPlatform = (typeof ALL_PANEL_PLATFORMS)[number];
+
+// Canales ocultos en el panel (no se borran: siguen en la BD y en /ventas). Para volver a
+// mostrar TikTok Shop, quitarlo de esta lista y de HIDDEN_PLATFORMS en src/app/panel/panel-client.tsx.
+export const HIDDEN_PANEL_PLATFORMS: readonly string[] = ['tiktok_shop'];
+
+// Canales visibles en el panel: Shopify y Amazon.
+export const PANEL_PLATFORMS = ALL_PANEL_PLATFORMS.filter((p) => !HIDDEN_PANEL_PLATFORMS.includes(p));
+
+export function isHiddenPlatform(platform: string): boolean {
+  return HIDDEN_PANEL_PLATFORMS.includes(platform);
+}
 
 export const PLATFORM_LABELS: Record<string, string> = {
   shopify: 'Shopify',

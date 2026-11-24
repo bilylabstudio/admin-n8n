@@ -200,7 +200,7 @@ describe('buildAlerts', () => {
       adsByPlatform: {}
     });
     const titles = alerts.map((a) => a.title);
-    expect(titles).toContain('TikTok Shop: sin datos');
+    expect(titles).not.toContain('TikTok Shop: sin datos');
     expect(titles).toContain('Amazon: pedidos sin importe');
     expect(titles).toContain('Amazon: muchos pedidos pendientes');
     expect(titles).toContain('Shopify: comisiones estimadas');
