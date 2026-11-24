@@ -56,8 +56,9 @@ export function PnlClient() {
   const [month, setMonth] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
-  const load = useCallback(async (y: number | null) => {
+  const load = useCallback(async (y: number | null, attempt = 0): Promise<void> => {
     setLoading(true);
     setError(null);
     try {
@@ -66,14 +67,19 @@ export function PnlClient() {
         window.location.href = '/login';
         return;
       }
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'No se pudo cargar el P&L.');
+      const json = res.status === 202 ? { ok: false, pending: true } : await res.json().catch(() => ({ ok: false, pending: true }));
+      if (json.pending && attempt < 20) {
+        setPending(true);
+        await new Promise((r) => setTimeout(r, 3000));
+        return load(y, attempt + 1);
+      }
+      if (!json.ok) throw new Error(json.error || 'No se pudo cargar el P&L. Vuelve a intentarlo en un momento.');
+      setPending(false);
       setData(json);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No se pudo cargar el P&L.');
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -230,7 +236,11 @@ export function PnlClient() {
           </button>
         </div>
       )}
-      {!data && loading && <div className={styles.loading}>Cargando el P&amp;L…</div>}
+      {!data && loading && (
+        <div className={styles.loading}>
+          {pending ? 'Calculando el año completo con todos los pedidos. La primera vez tarda unos segundos…' : 'Cargando el P&L…'}
+        </div>
+      )}
 
       {data && (
         <div className={loading ? styles.dimmed : undefined} aria-busy={loading}>
