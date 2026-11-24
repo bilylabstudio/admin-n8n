@@ -20,6 +20,9 @@ type Response = { ok: true; year: number; today: string; platforms: string[]; me
 const LABEL: Record<string, string> = { shopify: 'Web (Shopify)', amazon: 'Amazon' };
 const SHORT: Record<string, string> = { shopify: 'Web', amazon: 'Amazon' };
 const COLOR: Record<string, string> = { shopify: '#334fb4', amazon: '#e08a2c' };
+// Hasta octubre de 2026 los costes salen de las fórmulas del Excel de Nico; el gasto real se mete desde noviembre.
+const REAL_FROM = '2026-11';
+const canEnterReal = (m: string | null) => m !== null && m >= REAL_FROM;
 
 const eur0 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const eur2 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -260,7 +263,13 @@ export function PnlClient() {
                   label="Margen con datos reales"
                   value={total.actualLines ? money(total.blendedMargin) : '—'}
                   sub={total.actualLines ? `${pct(total.blendedMarginRate)} de la facturación` : undefined}
-                  hint={total.actualLines ? 'Real donde lo hay, estimado en el resto' : month ? 'Mete el gasto real en la tabla' : 'Elige un mes para meter el gasto real'}
+                  hint={
+                    total.actualLines
+                      ? 'Real donde lo hay, estimado en el resto'
+                      : canEnterReal(month)
+                        ? 'Escribe el gasto real en la tabla'
+                        : 'El gasto real se mete desde noviembre de 2026'
+                  }
                 />
               </section>
 
@@ -306,8 +315,8 @@ export function PnlClient() {
                     importe fijo al mes (prorrateado si el mes no ha terminado). La gestión de anuncios es un % de la publicidad del canal.
                   </li>
                   <li>
-                    <strong>Real:</strong> al elegir un mes podéis escribir el gasto real de cada concepto. El margen con datos reales usa el
-                    real donde lo hay y el estimado en el resto.
+                    <strong>Real:</strong> hasta octubre de 2026 los costes salen de las fórmulas del Excel de Nico. Desde noviembre, al elegir
+                    un mes podéis escribir el gasto real de cada concepto; el margen con datos reales usa el real donde lo hay y el estimado en el resto.
                   </li>
                   <li>
                     <strong>Diferencia:</strong> real menos estimado. En rojo si el gasto real supera al estimado.
@@ -444,7 +453,7 @@ function ChannelPnl({
                       <td className={styles.num}>{line ? money(line.estimated) : '—'}</td>
                       <td className={`${styles.num} ${p.share}`}>{line ? share(line.estimated) : ''}</td>
                       <td className={styles.num}>
-                        {month && rule.active ? (
+                        {canEnterReal(month) && rule.active ? (
                           <ActualInput
                             key={`${month}-${line?.actual ?? ''}`}
                             value={line?.actual ?? null}
@@ -485,7 +494,11 @@ function ChannelPnl({
           </tfoot>
         </table>
       </div>
-      {!month && <p className={styles.footnote}>Elige un mes arriba para escribir el gasto real de cada concepto.</p>}
+      <p className={styles.footnote}>
+        {canEnterReal(month)
+          ? 'Escribe en «Real» el gasto real del mes; el margen se recalcula al momento.'
+          : 'Hasta octubre de 2026, costes calculados con las fórmulas del Excel de Nico. El gasto real se mete mes a mes desde noviembre (elige «Nov» arriba).'}
+      </p>
     </section>
   );
 }
