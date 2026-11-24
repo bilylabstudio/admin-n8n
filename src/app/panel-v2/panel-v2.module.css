@@ -909,6 +909,10 @@
 @media (max-width: 820px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .brandName {
+    white-space: nowrap;
   }
   .side {
     position: static;
