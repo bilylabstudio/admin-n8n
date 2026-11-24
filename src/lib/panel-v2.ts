@@ -128,7 +128,7 @@ export function buildInsights(input: {
       if (c === null || Math.abs(c) < 5) continue;
       out.push({
         tone: c > 0 ? 'up' : 'down',
-        text: `${PLATFORM_LABELS[ch.platform] ?? ch.platform} ${c > 0 ? 'sube' : 'baja'} un ${pct(c)} (${eur(ch.netSales - ch.previousNetSales)}) ${input.compareLabel.replace(/^vs /, 'frente al ')}.`,
+        text: `${PLATFORM_LABELS[ch.platform] ?? ch.platform} ${c > 0 ? 'sube' : 'baja'} un ${pct(c)} (${c > 0 ? '+' : '−'}${eur(Math.abs(ch.netSales - ch.previousNetSales))}) ${input.compareLabel}.`,
         weight: 60 + Math.min(30, Math.abs(c))
       });
     }

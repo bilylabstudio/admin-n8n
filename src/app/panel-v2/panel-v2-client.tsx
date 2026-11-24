@@ -273,7 +273,7 @@ function Pulse({ data }: { data: Data }) {
             <circle cx={x(pulse.today)} cy={y(last)} r={4} className={s.pulseDot} />
             {hover ? <line x1={x(hover)} x2={x(hover)} y1={0} y2={h} className={s.pulseCross} /> : null}
             <text x={0} y={h + 18} className={s.pulseAxis}>1</text>
-            <text x={width} y={h + 18} textAnchor="end" className={s.pulseAxis}>{days}</text>
+            <text x={x(days)} y={h + 18} textAnchor="end" className={s.pulseAxis}>{days}</text>
           </svg>
         ) : null}
         <ul className={s.pulseLegend}>
@@ -733,25 +733,27 @@ function Customers({ data }: { data: Data }) {
           ))}
         </tbody>
       </table>
-      <p className={s.muted}>Recurrente: ya había comprado antes del periodo. Cuenta clientes distintos, sin datos personales.</p>
+      <p className={s.muted}>Recurrente: ya había comprado antes del periodo. Cuenta clientes distintos, sin datos personales. Amazon no comparte la identidad del comprador, por eso solo aparece Shopify.</p>
     </div>
   );
 }
 
 function Countries({ data }: { data: Data }) {
-  const max = Math.max(...data.countries.map((c) => c.netSales), 1);
+  const total = data.countries.reduce((a, c) => a + c.orders, 0) || 1;
+  const max = Math.max(...data.countries.map((c) => c.orders), 1);
   return (
     <div>
-      <h3 className={s.h3}>Países con más ventas</h3>
+      <h3 className={s.h3}>Pedidos por país</h3>
       <ul className={s.countries}>
         {data.countries.map((c) => (
           <li key={c.country}>
             <span>{COUNTRY[c.country] ?? c.country}</span>
-            <span className={s.shareBar}><i style={{ width: `${(c.netSales / max) * 100}%` }} /></span>
-            <span className={s.num}>{money(c.netSales)}</span>
+            <span className={s.shareBar}><i style={{ width: `${(c.orders / max) * 100}%` }} /></span>
+            <span className={s.num}>{int.format(c.orders)} <span className={s.shareTxt}>{pct((c.orders / total) * 100, c.orders / total < 0.01 ? 2 : 1)}</span></span>
           </li>
         ))}
       </ul>
+      <p className={s.muted}>Diez países con más pedidos cobrados en el periodo.</p>
     </div>
   );
 }
@@ -864,16 +866,18 @@ export function PanelV2Client() {
   }, [query, preset, params]);
 
   useEffect(() => {
-    const els = SECTIONS.map((x) => document.getElementById(x.id)).filter(Boolean) as HTMLElement[];
-    const io = new IntersectionObserver(
-      (entries) => {
-        const top = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
-        if (top) setActive(top.target.id);
-      },
-      { rootMargin: '-120px 0px -60% 0px' }
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
+    const onScroll = () => {
+      let current = SECTIONS[0].id;
+      for (const x of SECTIONS) {
+        const el = document.getElementById(x.id);
+        if (el && el.getBoundingClientRect().top <= 160) current = x.id;
+      }
+      if (window.innerHeight + window.scrollY >= document.body.scrollHeight - 4) current = SECTIONS[SECTIONS.length - 1].id;
+      setActive(current);
+    };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
   }, [data]);
 
   const alertCount = data?.alerts.filter((a) => a.level !== 'info').length ?? 0;
