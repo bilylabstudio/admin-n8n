@@ -528,11 +528,14 @@ export function buildAlerts(input: {
     const zeroBase = totals.orders + totals.pendingOrders;
     if (zeroBase > 20 && totals.zeroAmountOrders / zeroBase > 0.05) {
       const share = Math.round((totals.zeroAmountOrders / zeroBase) * 100);
+      const serious = share >= 20;
       alerts.push({
-        level: 'critical',
+        level: serious ? 'critical' : 'warning',
         platform,
-        title: `${label}: pedidos sin importe`,
-        detail: `${totals.zeroAmountOrders.toLocaleString('es-ES')} pedidos (${share}%) con más de 3 días siguen sin importe (0 €). Las ventas de ${label} estan infravaloradas.`
+        title: serious ? `${label}: pedidos sin importe` : `${label}: pedidos pendientes de cobro`,
+        detail: serious
+          ? `${totals.zeroAmountOrders.toLocaleString('es-ES')} pedidos (${share}%) con más de 3 días siguen sin importe (0 €). Las ventas de ${label} estan infravaloradas: revisa la sincronizacion.`
+          : `${totals.zeroAmountOrders.toLocaleString('es-ES')} pedidos (${share}%) con más de 3 días siguen pendientes de cobro en ${label} y aún no suman. Se añadirán solos cuando ${label} los cobre.`
       });
     }
 
