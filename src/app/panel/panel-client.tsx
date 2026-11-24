@@ -232,7 +232,6 @@ export function PanelClient() {
           )}
         </div>
         <nav className={styles.links}>
-          <a href="/panel/pyg">P&amp;L</a>
           <a href="/ventas">Detalle de ventas</a>
           <a href="/">Inbox</a>
         </nav>
