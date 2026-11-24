@@ -12,6 +12,8 @@ export type PnlRuleDef = {
   group: PnlGroup;
   value: number;
   note?: string;
+  /** Activo por defecto (false = el concepto aparece desactivado hasta que se active). */
+  defaultActive?: boolean;
 };
 
 export type PnlRule = PnlRuleDef & { active: boolean };
@@ -25,32 +27,33 @@ export const PNL_GROUP_LABELS: Record<PnlGroup, string> = {
 };
 export const PNL_GROUP_ORDER: PnlGroup[] = ['ads', 'marketing', 'operations', 'product', 'fixed'];
 
-// Valores por defecto: reproducen el margen del 18 % del Excel de la web. Todos se pueden cambiar desde el panel.
+// Valores por defecto = formulas del Excel del cliente (2026ecomerce.xlsx, Hoja1) tal cual:
+// web margen operativo 18,3 % y Amazon 52 % con sus mismas cifras. Todos se pueden cambiar desde el panel.
 export const DEFAULT_PNL_RULES: PnlRuleDef[] = [
-  { platform: 'shopify', key: 'meta_ads', label: 'Meta Ads', kind: 'pct_revenue', group: 'ads', value: 49, note: 'En el Excel: 2.498.322 € sobre 5.102.725 € (49 %). El texto decía 60 %.' },
-  { platform: 'shopify', key: 'google_ads', label: 'Google Ads', kind: 'pct_revenue', group: 'ads', value: 9 },
-  { platform: 'shopify', key: 'ads_agency', label: 'Gestión de anuncios', kind: 'pct_ads', group: 'marketing', value: 5, note: '5 % del gasto en Meta y Google.' },
-  { platform: 'shopify', key: 'videos', label: 'Producción de vídeos', kind: 'per_unit', group: 'marketing', value: 1.5 },
-  { platform: 'shopify', key: 'shipping', label: 'Envíos (TIPSA)', kind: 'per_order', group: 'operations', value: 4, note: '4 € por pedido. Equivale al 9,3 % de ventas del Excel.' },
-  { platform: 'shopify', key: 'shopify_fee', label: 'Plataforma Shopify', kind: 'pct_revenue', group: 'operations', value: 3 },
-  { platform: 'shopify', key: 'paypal', label: 'PayPal', kind: 'pct_revenue', group: 'operations', value: 0.7 },
-  { platform: 'shopify', key: 'product', label: 'Producto', kind: 'per_unit', group: 'product', value: 1.46 },
-  { platform: 'shopify', key: 'customer_service', label: 'Atención al cliente', kind: 'fixed_month', group: 'fixed', value: 10000, note: '120.000 € al año.' },
+  { platform: 'shopify', key: 'meta_ads', label: 'Meta Ads', kind: 'pct_revenue', group: 'ads', value: 48.9605, note: 'Excel B8: 2.498.321,88 € sobre 5.102.724,70 € de ventas (48,96 %). El texto de la celda dice 60 %.' },
+  { platform: 'shopify', key: 'google_ads', label: 'Google Ads', kind: 'pct_revenue', group: 'ads', value: 8.8188, note: 'Excel B14: 450.000 € sobre 5.102.724,70 € (8,82 %).' },
+  { platform: 'shopify', key: 'tipsa', label: 'Envíos (TIPSA)', kind: 'pct_revenue', group: 'operations', value: 9.3, note: 'Excel B9: 9,3 % de las ventas (≈ 4 € por pedido).' },
+  { platform: 'shopify', key: 'shopify_fee', label: 'Plataforma Shopify', kind: 'pct_revenue', group: 'operations', value: 3, note: 'Excel B10.' },
+  { platform: 'shopify', key: 'paypal', label: 'PayPal', kind: 'pct_revenue', group: 'operations', value: 0.7, note: 'Excel B11: fórmula 0,7 % (el texto dice 0,007 %).' },
+  { platform: 'shopify', key: 'product', label: 'Producto', kind: 'per_unit', group: 'product', value: 1.46, note: 'Excel B16: unidades × 1,46 € (el texto dice 2,92 €/ud).' },
+  { platform: 'shopify', key: 'customer_service', label: 'Atención al cliente', kind: 'fixed_month', group: 'fixed', value: 10000, note: 'Excel B17: 120.000 € al año.' },
+  { platform: 'shopify', key: 'ads_agency', label: 'Gestión de anuncios', kind: 'pct_ads', group: 'marketing', value: 5, defaultActive: false, note: 'Excel A20 (nota fuera de la fórmula): 5 % del gasto en Meta y Google.' },
+  { platform: 'shopify', key: 'videos', label: 'Producción de vídeos', kind: 'per_unit', group: 'marketing', value: 1.5, defaultActive: false, note: 'Excel A19 (nota fuera de la fórmula): 1,5 € por unidad vendida.' },
 
-  { platform: 'amazon', key: 'units_factor', label: 'Botes por artículo vendido', kind: 'units_factor', group: 'product', value: 1.7, note: 'Amazon cuenta artículos (packs). Excel: 164.680 uds a 18,17 €; API: ~95.000 artículos a ~30,7 € para la misma facturación → ≈1,7 botes por artículo.' },
-  { platform: 'amazon', key: 'amazon_ads', label: 'Publicidad Amazon', kind: 'pct_revenue', group: 'ads', value: 12 },
-  { platform: 'amazon', key: 'ads_agency', label: 'Gestión de anuncios', kind: 'pct_ads', group: 'marketing', value: 5, note: '5 % del gasto en publicidad de Amazon.' },
-  { platform: 'amazon', key: 'videos', label: 'Producción de vídeos', kind: 'per_unit', group: 'marketing', value: 1.5 },
-  { platform: 'amazon', key: 'amazon_fee', label: 'Plataforma Amazon', kind: 'pct_revenue', group: 'operations', value: 16 },
-  { platform: 'amazon', key: 'amazon_logistics', label: 'Logística Amazon', kind: 'pct_revenue', group: 'operations', value: 12 },
-  { platform: 'amazon', key: 'product', label: 'Producto', kind: 'per_unit', group: 'product', value: 1.46 }
+  { platform: 'amazon', key: 'units_factor', label: 'Botes por artículo vendido', kind: 'units_factor', group: 'product', value: 1.7, note: 'Amazon cuenta artículos (packs). Excel F3: 164.680 uds a 18,17 €; API: ~95.000 artículos a ~30,7 € para la misma facturación → ≈1,7 botes por artículo.' },
+  { platform: 'amazon', key: 'amazon_ads', label: 'Publicidad Amazon', kind: 'pct_revenue', group: 'ads', value: 12, note: 'Excel F8.' },
+  { platform: 'amazon', key: 'amazon_fee', label: 'Plataforma Amazon', kind: 'pct_revenue', group: 'operations', value: 16, note: 'Excel F9.' },
+  { platform: 'amazon', key: 'amazon_logistics', label: 'Logística Amazon', kind: 'pct_revenue', group: 'operations', value: 12, note: 'Excel F10.' },
+  { platform: 'amazon', key: 'product', label: 'Producto', kind: 'per_unit', group: 'product', value: 1.46, note: 'Excel F16: unidades × 1,46 €.' },
+  { platform: 'amazon', key: 'ads_agency', label: 'Gestión de anuncios', kind: 'pct_ads', group: 'marketing', value: 5, defaultActive: false, note: 'Excel A20 (nota fuera de la fórmula): 5 % del gasto en publicidad de Amazon.' },
+  { platform: 'amazon', key: 'videos', label: 'Producción de vídeos', kind: 'per_unit', group: 'marketing', value: 1.5, defaultActive: false, note: 'Excel A19 (nota fuera de la fórmula): 1,5 € por unidad vendida.' }
 ];
 
 export function mergeRules(overrides: { platform: string; key: string; value: number; active: boolean }[]): PnlRule[] {
   const byId = new Map(overrides.map((o) => [`${o.platform}:${o.key}`, o]));
   return DEFAULT_PNL_RULES.map((d) => {
     const o = byId.get(`${d.platform}:${d.key}`);
-    return { ...d, value: o ? o.value : d.value, active: o ? o.active : true };
+    return { ...d, value: o ? o.value : d.value, active: o ? o.active : d.defaultActive !== false };
   });
 }
 

@@ -2,19 +2,22 @@ import { describe, expect, it } from 'vitest';
 import { computePnl, mergeRules } from './pnl';
 
 describe('P&L', () => {
-  it('reproduce el margen del Excel de la web (~18 %)', () => {
-    // Excel: 298.722 uds, 5.102.724,70 €; ~115.000 pedidos (TIPSA 9,3 % ≈ 4 €/pedido). Sin videos ni agencia (no estaban en las formulas).
-    const rules = mergeRules([
-      { platform: 'shopify', key: 'videos', value: 1.5, active: false },
-      { platform: 'shopify', key: 'ads_agency', value: 5, active: false }
-    ]).filter((r) => r.platform === 'shopify');
-    const p = computePnl(rules, { revenue: 5102724.7, units: 298722, orders: 118638, monthFraction: 12 });
-    expect(p.estimatedMarginRate).toBeGreaterThan(17.5);
-    expect(p.estimatedMarginRate).toBeLessThan(18.6);
+  it('con los valores por defecto reproduce las celdas del Excel (web B18 y Amazon F18)', () => {
+    const web = computePnl(mergeRules([]).filter((r) => r.platform === 'shopify'), {
+      revenue: 5102724.7, units: 298722, orders: 118000, monthFraction: 12
+    });
+    expect(Math.abs(web.estimatedMargin - 934914.49)).toBeLessThan(5);
+    expect(web.estimatedMarginRate).toBeCloseTo(18.32, 1);
+    // Amazon: Excel usa 164.680 uds reales; aqui 164.680 / 1,7 articulos dan las mismas unidades de coste.
+    const amz = computePnl(mergeRules([]).filter((r) => r.platform === 'amazon'), {
+      revenue: 2992235.6, units: 164680 / 1.7, orders: 0, monthFraction: 1
+    });
+    expect(Math.abs(amz.estimatedMargin - 1554908.56)).toBeLessThan(5);
+    expect(web.lines.some((l) => l.key === 'videos' || l.key === 'ads_agency')).toBe(false);
   });
 
   it('la gestion de anuncios es un % del gasto en publicidad', () => {
-    const rules = mergeRules([]).filter((r) => r.platform === 'amazon');
+    const rules = mergeRules([{ platform: 'amazon', key: 'ads_agency', value: 5, active: true }]).filter((r) => r.platform === 'amazon');
     const p = computePnl(rules, { revenue: 1000, units: 0, orders: 0, monthFraction: 1 });
     expect(p.lines.find((l) => l.key === 'amazon_ads')!.estimated).toBe(120);
     expect(p.lines.find((l) => l.key === 'ads_agency')!.estimated).toBe(6);
@@ -31,7 +34,7 @@ describe('P&L', () => {
   });
 
   it('gastos fijos prorrateados y lineas desactivadas', () => {
-    const rules = mergeRules([{ platform: 'shopify', key: 'meta_ads', value: 49, active: false }]).filter((r) => r.platform === 'shopify');
+    const rules = mergeRules([{ platform: 'shopify', key: 'meta_ads', value: 48.96, active: false }]).filter((r) => r.platform === 'shopify');
     const p = computePnl(rules, { revenue: 0, units: 0, orders: 0, monthFraction: 0.5 });
     expect(p.lines.find((l) => l.key === 'customer_service')!.estimated).toBe(5000);
     expect(p.lines.some((l) => l.key === 'meta_ads')).toBe(false);
