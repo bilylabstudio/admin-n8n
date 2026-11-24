@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import styles from './panel.module.css';
 
 // ----------------------------- Tipos de la API -----------------------------
@@ -222,6 +222,7 @@ export function PanelClient() {
         <div>
           <p className={styles.eyebrow}>V-Gummies</p>
           <h1 className={styles.title}>Panel de negocio</h1>
+          <PanelTabs active="ventas" />
           {data && (
             <p className={styles.subtitle}>
               {dayLabel(data.range.current.start, { day: 'numeric', month: 'long', year: 'numeric' })} –{' '}
@@ -231,6 +232,7 @@ export function PanelClient() {
           )}
         </div>
         <nav className={styles.links}>
+          <a href="/panel/pyg">P&amp;L</a>
           <a href="/ventas">Detalle de ventas</a>
           <a href="/">Inbox</a>
         </nav>
@@ -300,6 +302,21 @@ export function PanelClient() {
   );
 }
 
+// ----------------------------- Pestañas -----------------------------
+
+export function PanelTabs({ active }: { active: 'ventas' | 'pyg' }) {
+  return (
+    <nav className={styles.tabs} aria-label="Secciones del panel">
+      <a href="/panel" className={active === 'ventas' ? styles.tabActive : styles.tab} aria-current={active === 'ventas' ? 'page' : undefined}>
+        Ventas
+      </a>
+      <a href="/panel/pyg" className={active === 'pyg' ? styles.tabActive : styles.tab} aria-current={active === 'pyg' ? 'page' : undefined}>
+        P&amp;L
+      </a>
+    </nav>
+  );
+}
+
 // ----------------------------- Alertas -----------------------------
 
 function Alerts({ alerts }: { alerts: Alert[] }) {
@@ -340,22 +357,15 @@ function Delta({ value, unit = '%', invert = false }: { value: number | null; un
 function KpiRow({ data }: { data: PanelResponse }) {
   const k = data.kpis;
   const p = data.previous;
-  const estimated = data.channels.some((c) => c.kpis.orders > 0 && (c.contribution.feesSource !== 'api' || c.contribution.adsSource !== 'api'));
+  const unitsDelta = p.units ? ((k.units - p.units) / p.units) * 100 : null;
   const tiles = [
     { label: 'Ventas netas', hint: 'Sin IVA y descontadas devoluciones', value: money(k.netSales), prev: money(p.netSales), delta: <Delta value={data.deltas.netSales} /> },
     { label: 'Ventas totales', hint: 'Netas + IVA', value: money(k.grossSales), prev: money(p.grossSales), delta: <Delta value={data.deltas.grossSales} /> },
-    { label: 'Pedidos', hint: `${int.format(k.units)} unidades`, value: int.format(k.orders), prev: int.format(p.orders), delta: <Delta value={data.deltas.orders} /> },
+    { label: 'Pedidos', hint: k.orders ? `${(k.units / k.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 })} unidades por pedido` : 'Pedidos cobrados', value: int.format(k.orders), prev: int.format(p.orders), delta: <Delta value={data.deltas.orders} /> },
+    { label: 'Unidades', hint: k.units ? `${eur2.format(k.netSales / k.units)} por unidad` : 'Unidades vendidas', value: int.format(k.units), prev: int.format(p.units), delta: <Delta value={data.hasPrevious ? unitsDelta : null} /> },
     { label: 'Ticket medio', hint: 'Venta neta por pedido', value: eur2.format(k.aov), prev: eur2.format(p.aov), delta: <Delta value={data.deltas.aov} /> },
-    {
-      label: 'Margen de contribución',
-      hint: estimated ? 'Estimado · ver cobertura abajo' : 'Tras comisiones, producto y anuncios',
-      value: money(k.contribution),
-      sub: k.contributionRate !== null ? `${pct(k.contributionRate)} de las ventas` : undefined,
-      prev: money(p.contribution),
-      delta: <Delta value={data.deltas.contribution} />
-    },
     { label: 'Devoluciones', hint: 'Pedidos con reembolso', value: pct(k.refundRate), prev: pct(p.refundRate), delta: <Delta value={data.deltas.refundRate} unit="pp" invert /> }
-  ];
+  ] as { label: string; hint: string; value: string; sub?: string; prev: string; delta: ReactNode }[];
   return (
     <section className={styles.kpis} aria-label="Indicadores principales">
       {tiles.map((t) => (
@@ -647,7 +657,7 @@ function ChannelTable({ data }: { data: PanelResponse }) {
     <section className={styles.card}>
       <div className={styles.cardHead}>
         <h2>Rendimiento por canal</h2>
-        <span className={styles.muted}>Margen = ventas netas − comisiones − coste de producto − anuncios</span>
+        <a className={styles.muted} href="/panel/pyg">Costes y margen en el P&amp;L →</a>
       </div>
       <div className={styles.tableScroll}>
         <table className={styles.table}>
@@ -659,11 +669,9 @@ function ChannelTable({ data }: { data: PanelResponse }) {
               <th>Peso</th>
               <th className={styles.num}>Pedidos</th>
               <th className={styles.num}>Ticket medio</th>
-              <th className={styles.num}>Comisiones</th>
-              <th className={styles.num}>Coste producto</th>
-              <th className={styles.num}>Anuncios</th>
-              <th className={styles.num}>Margen</th>
-              <th className={styles.num}>% margen</th>
+              <th className={styles.num}>Unidades</th>
+              <th className={styles.num}>Uds. por pedido</th>
+              <th className={styles.num}>Precio medio unidad</th>
             </tr>
           </thead>
           <tbody>
@@ -683,20 +691,9 @@ function ChannelTable({ data }: { data: PanelResponse }) {
                 </td>
                 <td className={styles.num}>{int.format(c.kpis.orders)}</td>
                 <td className={styles.num}>{c.kpis.orders ? eur2.format(c.kpis.aov) : '—'}</td>
-                <td className={styles.num}>
-                  {c.kpis.orders ? money(c.contribution.fees) : '—'}
-                  {c.kpis.orders > 0 && <SourceTag source={c.contribution.feesSource} />}
-                </td>
-                <td className={styles.num}>
-                  {c.kpis.orders ? money(c.contribution.productCost) : '—'}
-                  {c.kpis.orders > 0 && <SourceTag source="estimated" />}
-                </td>
-                <td className={styles.num}>
-                  {c.kpis.orders ? money(c.contribution.ads) : '—'}
-                  {c.kpis.orders > 0 && <SourceTag source={c.contribution.adsSource} />}
-                </td>
-                <td className={styles.num}>{c.kpis.orders ? <strong>{money(c.contribution.contribution)}</strong> : '—'}</td>
-                <td className={styles.num}>{pct(c.contribution.contributionRate)}</td>
+                <td className={styles.num}>{int.format(c.kpis.units)}</td>
+                <td className={styles.num}>{c.kpis.orders ? (c.kpis.units / c.kpis.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—'}</td>
+                <td className={styles.num}>{c.kpis.units ? eur2.format(c.kpis.netSales / c.kpis.units) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -710,13 +707,9 @@ function ChannelTable({ data }: { data: PanelResponse }) {
               <td />
               <td className={styles.num}>{int.format(total.orders)}</td>
               <td className={styles.num}>{eur2.format(total.aov)}</td>
-              <td className={styles.num}>{money(data.channels.reduce((a, c) => a + c.contribution.fees, 0))}</td>
-              <td className={styles.num}>{money(data.channels.reduce((a, c) => a + c.contribution.productCost, 0))}</td>
-              <td className={styles.num}>{money(data.marketing.totalAds)}</td>
-              <td className={styles.num}>
-                <strong>{money(total.contribution)}</strong>
-              </td>
-              <td className={styles.num}>{pct(total.contributionRate)}</td>
+              <td className={styles.num}>{int.format(total.units)}</td>
+              <td className={styles.num}>{total.orders ? (total.units / total.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—'}</td>
+              <td className={styles.num}>{total.units ? eur2.format(total.netSales / total.units) : '—'}</td>
             </tr>
           </tfoot>
         </table>
@@ -726,16 +719,12 @@ function ChannelTable({ data }: { data: PanelResponse }) {
         IVA ni envíos). Amazon desde la API de pedidos de Amazon: importe total de los pedidos cobrados, con IVA, envío y
         promociones; puede diferir de Vendorati, que usa su propio criterio.
         <br />
-        Las cifras marcadas como <em>estimada</em> usan las tasas del panel financiero de /ventas (comisión por pedido, % de
-        venta y coste por unidad). Se sustituyen solas por datos reales cuando se sincronizan comisiones y publicidad.
+        Unidades: Shopify cuenta cada artículo de la línea de pedido; Amazon cuenta artículos del pedido según su API.
       </p>
     </section>
   );
 }
 
-function SourceTag({ source }: { source: 'api' | 'estimated' | 'missing' }) {
-  return <span className={`${styles.tag} ${styles[`tag_${source}`]}`}>{SOURCE_LABEL[source]}</span>;
-}
 
 // ----------------------------- Clientes y paises -----------------------------
 

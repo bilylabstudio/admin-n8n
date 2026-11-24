@@ -1,0 +1,157 @@
+.sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 6px;
+  background: var(--line-soft);
+}
+
+.kpiStrong {
+  border-color: var(--gummy-teal);
+  box-shadow: inset 0 3px 0 var(--gummy-teal);
+}
+
+.pnl td,
+.pnl th {
+  white-space: nowrap;
+}
+
+.revenueRow td {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.groupRow td {
+  padding-top: 14px;
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 700;
+  border-bottom: 0;
+}
+
+.rule {
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.share {
+  color: var(--ink-soft);
+}
+
+.inactive td {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
+.inactive td:first-child {
+  text-decoration: none;
+}
+
+.noteMark {
+  color: var(--ink-muted);
+  cursor: help;
+}
+
+.marginRow td {
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--ink);
+}
+
+.worse {
+  color: var(--error-red);
+  font-weight: 600;
+}
+
+.better {
+  color: #1d7a4f;
+  font-weight: 600;
+}
+
+.empty {
+  color: var(--ink-muted);
+}
+
+.inputWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.input {
+  width: 84px;
+  padding: 4px 8px;
+  border: 1px solid rgba(46, 42, 57, 0.18);
+  border-radius: 6px;
+  background: var(--surface);
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.input:focus {
+  outline: 2px solid var(--gummy-blue);
+  outline-offset: 1px;
+}
+
+.actual {
+  width: 104px;
+}
+
+.unit {
+  color: var(--ink-muted);
+  font-size: 12px;
+}
+
+.check {
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
+
+.grid {
+  stroke: rgba(46, 42, 57, 0.08);
+}
+
+.realLine {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.realSwatch {
+  display: inline-block;
+  width: 14px;
+  height: 0;
+  border-top: 3px solid var(--ink);
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.clickRow {
+  cursor: pointer;
+}
+
+.selectedRow td {
+  background: var(--surface-inset);
+}
+
+.linkBtn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: rgba(46, 42, 57, 0.25);
+  cursor: pointer;
+}
+
+.notes {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.5;
+}

@@ -406,3 +406,27 @@ model FinancialSetting {
 
   @@id([platform, key])
 }
+
+// P&L del panel de negocio: supuestos editables (sobrescriben los valores por defecto de src/lib/pnl.ts)
+model PnlRule {
+  platform  String
+  key       String
+  value     Decimal  @db.Decimal(14, 4)
+  active    Boolean  @default(true)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@id([platform, key])
+}
+
+// P&L del panel de negocio: gasto real introducido a mano por mes, canal y concepto
+model PnlActual {
+  platform  String
+  month     String
+  key       String
+  amount    Decimal  @db.Decimal(14, 2)
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@id([platform, month, key])
+}
