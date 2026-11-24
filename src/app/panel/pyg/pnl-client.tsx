@@ -276,7 +276,7 @@ export function PnlClient() {
                 </div>
               )}
 
-              <div className={styles.grid2even}>
+              <div className={p.channels}>
                 {data.platforms.map((platform) => (
                   <ChannelPnl
                     key={platform}
