@@ -229,9 +229,19 @@ export function PnlClient() {
             </button>
           ))}
         </div>
+        <span style={{ display: 'flex', gap: 8 }}>
+        <a
+          className={styles.ghostBtn}
+          style={{ textDecoration: 'none' }}
+          href={data ? `/api/panel/pnl/export?year=${data.year}${month ? `&month=${month}` : ''}` : undefined}
+          aria-disabled={!data}
+        >
+          Descargar Excel
+        </a>
         <button type="button" className={`${styles.chip} ${editing ? styles.chipActive : ''}`} aria-pressed={editing} onClick={() => setEditing((v) => !v)}>
           {editing ? 'Terminar de editar' : 'Editar supuestos'}
         </button>
+        </span>
       </div>
 
       {data && (
