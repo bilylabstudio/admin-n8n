@@ -812,6 +812,7 @@ export function PanelClient() {
   const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [slow, setSlow] = useState(false);
 
   const setParam = useCallback(
     (patch: Record<string, string | null>) => {
@@ -836,16 +837,27 @@ export function PanelClient() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetch(`/api/panel/v2?${query}`, { cache: 'no-store' })
-      .then(async (res) => {
-        if (res.status === 401 || res.status === 403) {
+    (async () => {
+      for (let attempt = 0; attempt < 25 && !cancelled; attempt++) {
+        const res = await fetch(`/api/panel/v2?${query}`, { cache: 'no-store' }).catch(() => null);
+        if (res && (res.status === 401 || res.status === 403)) {
           window.location.href = '/login';
           return;
         }
-        const json = await res.json();
-        if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudieron cargar los datos.');
-        if (!cancelled) setData(json);
-      })
+        const json = res && res.status !== 202 ? await res.json().catch(() => null) : null;
+        if (json?.ok) {
+          if (!cancelled) {
+            setData(json);
+            setSlow(false);
+          }
+          return;
+        }
+        if (json && !json.pending) throw new Error(json.error || 'No se pudieron cargar los datos.');
+        if (!cancelled) setSlow(true);
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+      throw new Error('Los datos están tardando más de lo normal. Vuelve a intentarlo en un momento.');
+    })()
       .catch((e: Error) => !cancelled && setError(e.message))
       .finally(() => !cancelled && setLoading(false));
     return () => {
@@ -983,7 +995,11 @@ export function PanelClient() {
             <strong>No se han podido cargar los datos.</strong> {error}
           </div>
         ) : null}
-        {!data && !error ? <div className={s.skeleton} aria-busy="true" /> : null}
+        {!data && !error ? (
+          <div className={s.skeleton} aria-busy="true">
+            {slow ? <p className={s.skeletonText}>Calculando las cifras con todos los pedidos… la primera vez tarda unos segundos.</p> : null}
+          </div>
+        ) : null}
 
         {data ? (
           <div className={loading ? s.dimmed : undefined} aria-busy={loading}>

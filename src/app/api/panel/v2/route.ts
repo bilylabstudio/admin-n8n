@@ -32,17 +32,37 @@ import {
 
 export const dynamic = 'force-dynamic';
 
+// El calculo en frio puede tardar mas de lo que aguanta el proxy: se calcula en segundo plano,
+// se comparte entre peticiones iguales y, si tarda, se responde "pendiente" (202) para que la pagina reintente.
+type Built = { status: number; body: unknown };
+const inflight: Map<string, { at: number; promise: Promise<Built> }> = ((globalThis as { __panelV2?: Map<string, { at: number; promise: Promise<Built> }> }).__panelV2 ??= new Map());
+
 export async function GET(request: Request) {
   const user = await currentUser();
   if (!user) return Response.json({ ok: false, error: 'No autorizado' }, { status: 401 });
-
   const url = new URL(request.url);
+  const key = [...url.searchParams.entries()].sort().map(([k, v]) => `${k}=${v}`).join('&');
+  let entry = inflight.get(key);
+  if (!entry || Date.now() - entry.at > 4 * 60_000) {
+    const promise = build(url).catch((e) => ({ status: 500, body: { ok: false, error: e instanceof Error ? e.message : 'Error' } }));
+    entry = { at: Date.now(), promise };
+    inflight.set(key, entry);
+    promise.then((r) => {
+      if (r.status !== 200) inflight.delete(key);
+    });
+  }
+  const result = await Promise.race([entry.promise, new Promise<null>((r) => setTimeout(() => r(null), 8000))]);
+  if (!result) return Response.json({ ok: false, pending: true }, { status: 202 });
+  return Response.json(result.body, { status: result.status });
+}
+
+async function build(url: URL): Promise<Built> {
   const resolved = resolvePanelRange({
     preset: url.searchParams.get('preset'),
     start: url.searchParams.get('start'),
     end: url.searchParams.get('end')
   });
-  if (!resolved.ok) return Response.json({ ok: false, error: resolved.error }, { status: 400 });
+  if (!resolved.ok) return { status: 400, body: { ok: false, error: resolved.error } };
   const { range } = resolved;
 
   const compareMode: CompareMode = url.searchParams.get('compare') === 'year' ? 'year' : 'previous';
@@ -187,7 +207,7 @@ export async function GET(request: Request) {
     products: productRows
   });
 
-  return Response.json({
+  return { status: 200, body: {
     ok: true,
     range,
     compare: { mode: compareMode, window: comparison.window, label: comparison.label },
@@ -228,5 +248,5 @@ export async function GET(request: Request) {
       feesByPlatform: curMoney.feesByPlatform,
       adsByPlatform: curMoney.adsByPlatform
     })
-  });
+  } };
 }

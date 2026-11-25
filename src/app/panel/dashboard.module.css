@@ -1166,3 +1166,12 @@
     animation: none;
   }
 }
+.skeleton {
+  display: grid;
+  place-items: center;
+}
+.skeletonText {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
