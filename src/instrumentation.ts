@@ -11,17 +11,30 @@ export async function register() {
     'compare=previous&channel=all&preset=last_month'
   ];
   let running = false;
+  const status = ((globalThis as { __panelWarmStatus?: Record<string, unknown> }).__panelWarmStatus = {
+    registeredAt: new Date().toISOString(),
+    runs: 0
+  } as Record<string, unknown>);
   const warm = async () => {
     if (running) return;
     running = true;
+    const t0 = Date.now();
+    status.lastStart = new Date().toISOString();
     try {
       const { refreshPanelV2 } = await import('@/lib/panel-v2-build');
       const { yearMetrics } = await import('@/lib/pnl-metrics');
       const { todayInMadrid } = await import('@/lib/panel');
-      for (const q of views) await refreshPanelV2(q).catch(() => undefined);
+      const errors: string[] = [];
+      for (const q of views) await refreshPanelV2(q).catch((e) => errors.push(String(e)));
       const today = todayInMadrid();
-      await yearMetrics(Number(today.slice(0, 4)), today).catch(() => undefined);
+      await yearMetrics(Number(today.slice(0, 4)), today).catch((e) => errors.push(String(e)));
+      status.lastErrors = errors;
+      status.runs = Number(status.runs) + 1;
+    } catch (e) {
+      status.lastErrors = [String(e)];
     } finally {
+      status.lastEnd = new Date().toISOString();
+      status.lastMs = Date.now() - t0;
       running = false;
     }
   };
