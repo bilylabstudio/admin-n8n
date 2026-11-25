@@ -1628,7 +1628,15 @@
     grid-column: span 1;
   }
 }
-@media (max-width: 860px) {
+@media (max-width: 1024px) and (min-width: 681px) {
+  .gridMain {
+    grid-template-columns: minmax(0, 1.75fr) minmax(210px, 1fr);
+  }
+  .channelFacts dd {
+    font-size: 12.5px;
+  }
+}
+@media (max-width: 680px) {
   .gridMain,
   .gridTwo {
     grid-template-columns: minmax(0, 1fr);
