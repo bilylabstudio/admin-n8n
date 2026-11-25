@@ -139,7 +139,8 @@ function niceMax(v: number) {
   if (v <= 0) return 1;
   const p = 10 ** Math.floor(Math.log10(v));
   const n = v / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  const steps = [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+  return (steps.find((x) => n <= x) ?? 10) * p;
 }
 
 // ----------------------------- Piezas comunes -----------------------------
@@ -259,10 +260,10 @@ function Kpis({ data }: { data: Data }) {
           <Delta value={data.hasPrevious ? data.deltas.units : null} label={cmp} />
           {prev(int.format(p.units))}
         </span>
-        <span className={s.kpiHint}>
-          {k.orders ? `${(k.units / k.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 })} por pedido` : ''}
-          {k.units ? ` · ${eur2.format(k.netSales / k.units)} por unidad` : ''}
-        </span>
+        <dl className={s.kpiFacts}>
+          <div><dt>Por pedido</dt><dd>{k.orders ? (k.units / k.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—'}</dd></div>
+          <div><dt>Precio por unidad</dt><dd>{k.units ? eur2.format(k.netSales / k.units) : '—'}</dd></div>
+        </dl>
       </div>
       <div className={s.kpi}>
         <span className={s.kpiLabel}>Ticket medio</span>
@@ -280,7 +281,10 @@ function Kpis({ data }: { data: Data }) {
           <Delta value={data.hasPrevious ? data.deltas.refundRate : null} unit="pp" invert label={cmp} />
           {prev(pct(p.refundRate))}
         </span>
-        <span className={s.kpiHint}>Pedidos con reembolso</span>
+        <div className={s.miniTrack} aria-hidden>
+          <span style={{ width: `${Math.min(100, k.refundRate * 4)}%` }} />
+        </div>
+        <span className={s.kpiHint}>Pedidos con reembolso sobre el total</span>
       </div>
     </section>
   );
@@ -757,7 +761,7 @@ function Countries({ data }: { data: Data }) {
               <i style={{ width: `${(c.orders / max) * 100}%` }} />
             </span>
             <span className={s.countryValue}>{int.format(c.orders)}</span>
-            <span className={s.countryPct}>{pct((c.orders / total) * 100, c.orders / total < 0.01 ? 2 : 1)}</span>
+            <span className={s.countryPct}>{(c.orders / total) * 100 < 0.1 ? '<0,1 %' : pct((c.orders / total) * 100)}</span>
           </li>
         ))}
       </ul>

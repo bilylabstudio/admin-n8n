@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import styles from '../panel.module.css';
+import styles from '../dashboard.module.css';
 import p from './pnl.module.css';
 import { PanelTabs } from '../panel-client';
 import {
@@ -174,21 +174,24 @@ export function PnlClient() {
   const currentYear = data ? Number(data.today.slice(0, 4)) : null;
 
   return (
+    <div className={styles.page}>
     <div className={styles.root}>
       <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>V-Gummies</p>
-          <h1 className={styles.title}>Panel de negocio</h1>
-          <PanelTabs active="pyg" />
-          {data && <p className={styles.subtitle}>P&amp;L · {periodText}</p>}
+        <div className={styles.brand}>
+          <span className={styles.logo} aria-hidden>V</span>
+          <div>
+            <p className={styles.eyebrow}>V-Gummies</p>
+            <h1 className={styles.title}>Panel de negocio</h1>
+          </div>
         </div>
+        <PanelTabs active="pyg" />
         <nav className={styles.links}>
           <a href="/ventas">Detalle de ventas</a>
           <a href="/">Inbox</a>
         </nav>
       </header>
 
-      <div className={styles.filters} role="toolbar" aria-label="Periodo del P&L">
+      <div className={styles.toolbar} role="toolbar" aria-label="Periodo del P&L">
         <div className={styles.chips}>
           {currentYear &&
             [currentYear - 1, currentYear].map((y) => (
@@ -231,6 +234,11 @@ export function PnlClient() {
         </button>
       </div>
 
+      {data && (
+        <p className={styles.subtitle} style={{ marginTop: 14 }}>
+          <strong style={{ color: 'var(--ink)' }}>P&amp;L · {periodText}</strong> · costes según las fórmulas del Excel de Nico; gasto real desde noviembre
+        </p>
+      )}
       {error && (
         <div className={`${styles.alert} ${styles.alertCritical}`} role="alert">
           {error}{' '}
@@ -252,8 +260,8 @@ export function PnlClient() {
               <p className={styles.muted}>No hay ventas registradas en {data.year}.</p>
             </section>
           ) : (
-            <>
-              <section className={styles.kpis} aria-label="Resumen del P&L">
+            <div className={p.stack}>
+              <section className={p.kpis6} aria-label="Resumen del P&L">
                 <Kpi label="Facturación" value={money(total.revenue)} hint={`${SHORT.shopify} ${money(perPlatform.shopify?.revenue ?? 0)} · Amazon ${money(perPlatform.amazon?.revenue ?? 0)}`} />
                 <Kpi label="Unidades" value={int.format(total.units)} hint={total.units ? `${eur2.format(total.revenue / total.units)} por unidad` : ''} />
                 <Kpi label="Pedidos" value={int.format(total.orders)} hint={total.orders ? `${eur2.format(total.revenue / total.orders)} por pedido` : ''} />
@@ -323,10 +331,11 @@ export function PnlClient() {
                   </li>
                 </ul>
               </section>
-            </>
+            </div>
           )}
         </div>
       )}
+    </div>
     </div>
   );
 }
