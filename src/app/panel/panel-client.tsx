@@ -1,9 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import styles from './panel.module.css';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import s from './dashboard.module.css';
 
-// ----------------------------- Tipos de la API -----------------------------
+// Panel de negocio · Ventas (rediseño 25-nov-2026). Evolución del panel anterior (/panel/anterior),
+// con los datos de /api/panel/v2 (mismas cifras verificadas + comparación, productos e insights).
+
+// ----------------------------- Tipos -----------------------------
 
 type Kpis = {
   netSales: number;
@@ -12,31 +16,10 @@ type Kpis = {
   units: number;
   aov: number;
   refundRate: number;
-  contribution: number;
-  contributionRate: number | null;
 };
-
-type Channel = {
-  platform: string;
-  kpis: Kpis;
-  previous: Kpis;
-  share: number;
-  delta: number | null;
-  pendingOrders: number;
-  zeroAmountOrders: number;
-  contribution: {
-    netSales: number;
-    fees: number;
-    feesSource: 'api' | 'estimated' | 'missing';
-    productCost: number;
-    ads: number;
-    adsSource: 'api' | 'missing';
-    contribution: number;
-    contributionRate: number | null;
-  };
-};
-
-type ShopifyReport = {
+type Point = { key: string; values: Record<string, number>; orders: Record<string, number> };
+type Channel = { platform: string; selected: boolean; kpis: Kpis; previous: Kpis; share: number; delta: number | null };
+type Report = {
   orders: number;
   units: number;
   grossSales: number;
@@ -47,25 +30,18 @@ type ShopifyReport = {
   totalSales: number;
   shipping: number;
 };
-
 type Alert = { level: 'critical' | 'warning' | 'info'; platform: string | null; title: string; detail: string };
-
-type PanelResponse = {
+type Data = {
   ok: true;
-  range: {
-    preset: string;
-    current: { start: string; end: string };
-    previous: { start: string; end: string };
-    compareLabel: string;
-    today: string;
-  };
+  range: { preset: string; current: { start: string; end: string }; today: string };
+  compare: { mode: 'previous' | 'year'; window: { start: string; end: string }; label: string };
+  channel: string;
   hasPrevious: boolean;
-  kpis: Kpis;
+  kpis: Kpis & { customers: number; newCustomers: number };
   previous: Kpis;
-  deltas: Record<'netSales' | 'grossSales' | 'orders' | 'aov' | 'contribution' | 'refundRate', number | null>;
+  deltas: Record<'netSales' | 'totalSales' | 'orders' | 'aov' | 'units' | 'refundRate', number | null>;
   channels: Channel[];
-  marketing: { totalAds: number; totalFees: number; mer: number | null };
-  shopifyReport: { current: ShopifyReport; previous: ShopifyReport };
+  shopifyReport: { current: Report; previous: Report };
   forecast: {
     month: string;
     daysElapsed: number;
@@ -76,32 +52,25 @@ type PanelResponse = {
     previousMonthNet: number;
     vsPreviousMonth: number | null;
   } | null;
-  series: {
-    granularity: 'day' | 'week' | 'month';
-    points: { key: string; values: Record<string, number>; orders: Record<string, number> }[];
-  };
+  pulse: { month: string; daysInMonth: number; today: number; current: number[]; previous: number[] };
+  insights: { tone: 'up' | 'down' | 'neutral'; text: string }[];
+  series: { granularity: 'day' | 'week' | 'month'; points: Point[]; previous: Point[] };
+  daily: Point[];
+  products: { product: string; netSales: number; units: number; orders: number; previousNetSales: number }[];
   trend: { month: string; platform: string; orders: number; net: number }[];
-  customers: { platform: string; customers: number; returningCustomers: number; multiOrderCustomers: number; netSales: number }[];
+  customers: { platform: string; customers: number; returningCustomers: number }[];
   countries: { country: string; orders: number; netSales: number }[];
-  freshness: {
-    platform: string;
-    lastOrderAt: string | null;
-    lastSyncRunAt: string | null;
-    lastSyncStatus: string | null;
-    lastSyncError: string | null;
-  }[];
+  freshness: { platform: string; lastOrderAt: string | null; lastSyncRunAt: string | null }[];
   alerts: Alert[];
 };
 
-// ----------------------------- Constantes -----------------------------
+// ----------------------------- Constantes y formato -----------------------------
 
-// TikTok Shop oculto de momento (no borrado). Para mostrarlo: añadir 'tiktok_shop' aquí y quitarlo
-// de HIDDEN_PANEL_PLATFORMS en src/lib/panel.ts.
-const PLATFORMS = ['shopify', 'amazon'] as const;
-const PLATFORM_LABELS: Record<string, string> = { shopify: 'Shopify', amazon: 'Amazon', tiktok_shop: 'TikTok Shop' };
-// Orden fijo de color por canal (validado para daltonismo; ver skill dataviz).
-const PLATFORM_COLORS: Record<string, string> = { shopify: '#334fb4', amazon: '#e08a2c', tiktok_shop: '#a891f6' };
-
+// TikTok Shop oculto de momento (ver HIDDEN_PANEL_PLATFORMS en src/lib/panel.ts).
+const PLATFORMS = ['shopify', 'amazon'];
+const LABEL: Record<string, string> = { shopify: 'Shopify', amazon: 'Amazon', tiktok_shop: 'TikTok Shop' };
+// Orden fijo de color por canal (validado para daltonismo).
+const COLOR: Record<string, string> = { shopify: '#334fb4', amazon: '#e08a2c', tiktok_shop: '#a891f6' };
 const PRESETS = [
   { id: 'mtd', label: 'Este mes' },
   { id: 'last_month', label: 'Mes pasado' },
@@ -109,59 +78,48 @@ const PRESETS = [
   { id: '90d', label: '90 días' },
   { id: 'ytd', label: 'Este año' }
 ];
-
-const COUNTRY_NAMES: Record<string, string> = {
-  ES: 'España', PT: 'Portugal', FR: 'Francia', IT: 'Italia', DE: 'Alemania', GB: 'Reino Unido',
-  NL: 'Países Bajos', BE: 'Bélgica', IE: 'Irlanda', AT: 'Austria', CH: 'Suiza', US: 'Estados Unidos',
-  MX: 'México', AD: 'Andorra', PL: 'Polonia', SE: 'Suecia', SK: 'Eslovaquia', LU: 'Luxemburgo', DK: 'Dinamarca', FI: 'Finlandia', CZ: 'Chequia', GR: 'Grecia', NO: 'Noruega', HU: 'Hungría', RO: 'Rumanía', BG: 'Bulgaria', HR: 'Croacia', SI: 'Eslovenia', LT: 'Lituania', LV: 'Letonia', EE: 'Estonia', CY: 'Chipre', MT: 'Malta', '??': 'Sin país'
+const COUNTRY: Record<string, string> = {
+  ES: 'España', PT: 'Portugal', FR: 'Francia', IT: 'Italia', DE: 'Alemania', GB: 'Reino Unido', NL: 'Países Bajos',
+  BE: 'Bélgica', IE: 'Irlanda', AT: 'Austria', CH: 'Suiza', US: 'Estados Unidos', MX: 'México', AD: 'Andorra',
+  PL: 'Polonia', SE: 'Suecia', SK: 'Eslovaquia', LU: 'Luxemburgo', DK: 'Dinamarca', FI: 'Finlandia', CZ: 'Chequia',
+  GR: 'Grecia', NO: 'Noruega', HU: 'Hungría', RO: 'Rumanía', BG: 'Bulgaria', HR: 'Croacia', SI: 'Eslovenia',
+  LT: 'Lituania', LV: 'Letonia', EE: 'Estonia', CY: 'Chipre', MT: 'Malta', '??': 'Sin país'
 };
-
-// ----------------------------- Formato -----------------------------
 
 const eur0 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 const eur2 = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const int = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
-
-function money(v: number) {
-  return eur0.format(v);
-}
-function compactMoney(v: number) {
-  if (Math.abs(v) >= 1_000_000) return `${(v / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 2 })} M€`;
-  if (Math.abs(v) >= 1_000) return `${(v / 1_000).toLocaleString('es-ES', { maximumFractionDigits: 0 })} k€`;
-  return eur0.format(v);
-}
-function pct(v: number | null | undefined, digits = 1) {
-  if (v === null || v === undefined) return '—';
-  return `${v.toLocaleString('es-ES', { maximumFractionDigits: digits, minimumFractionDigits: digits })} %`;
-}
-function dayLabel(day: string, opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }) {
-  return new Date(`${day}T12:00:00Z`).toLocaleDateString('es-ES', { ...opts, timeZone: 'UTC' });
-}
-function monthLabel(month: string, long = false) {
-  return new Date(`${month}-01T12:00:00Z`).toLocaleDateString('es-ES', {
-    month: long ? 'long' : 'short',
-    year: long ? 'numeric' : '2-digit',
-    timeZone: 'UTC'
-  });
-}
-function bucketLabel(key: string, g: 'day' | 'week' | 'month', long = false) {
-  if (g === 'month') return monthLabel(key, long);
-  if (g === 'week') return `${long ? 'Semana del ' : ''}${dayLabel(key)}`;
-  return long ? dayLabel(key, { weekday: 'short', day: 'numeric', month: 'short' }) : dayLabel(key);
-}
-function capitalize(text: string) {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-function relativeTime(iso: string | null) {
-  if (!iso) return 'nunca';
-  const diff = Date.now() - new Date(iso).getTime();
-  const h = diff / 3_600_000;
-  if (h < 1) return `hace ${Math.max(1, Math.round(diff / 60_000))} min`;
-  if (h < 48) return `hace ${Math.round(h)} h`;
-  return `hace ${Math.round(h / 24)} días`;
-}
-
-// ----------------------------- Hooks -----------------------------
+const money = (v: number) => eur0.format(v);
+const compact = (v: number) =>
+  Math.abs(v) >= 1_000_000
+    ? `${(v / 1_000_000).toLocaleString('es-ES', { maximumFractionDigits: 2 })} M€`
+    : Math.abs(v) >= 1_000
+      ? `${(v / 1_000).toLocaleString('es-ES', { maximumFractionDigits: 0 })} k€`
+      : eur0.format(v);
+const pct = (v: number | null | undefined, d = 1) =>
+  v === null || v === undefined ? '—' : `${v.toLocaleString('es-ES', { maximumFractionDigits: d, minimumFractionDigits: d })} %`;
+const day = (d: string, o: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' }) =>
+  new Date(`${d}T12:00:00Z`).toLocaleDateString('es-ES', { ...o, timeZone: 'UTC' });
+const monthName = (m: string, long = false) =>
+  new Date(`${m}-01T12:00:00Z`).toLocaleDateString('es-ES', { month: long ? 'long' : 'short', year: long ? 'numeric' : '2-digit', timeZone: 'UTC' });
+const bucket = (k: string, g: 'day' | 'week' | 'month', long = false) =>
+  g === 'month'
+    ? monthName(k, long)
+    : g === 'week'
+      ? `${long ? 'Semana del ' : ''}${day(k)}`
+      : long
+        ? day(k, { weekday: 'long', day: 'numeric', month: 'long' })
+        : day(k);
+const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
+const change = (cur: number, prev: number) => (prev ? ((cur - prev) / Math.abs(prev)) * 100 : null);
+const ago = (iso: string | null) => {
+  if (!iso) return 'sin datos';
+  const m = (Date.now() - new Date(iso).getTime()) / 60_000;
+  if (m < 60) return `hace ${Math.max(1, Math.round(m))} min`;
+  if (m < 48 * 60) return `hace ${Math.round(m / 60)} h`;
+  return `hace ${Math.round(m / 1440)} días`;
+};
 
 function useWidth<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -169,7 +127,7 @@ function useWidth<T extends HTMLElement>() {
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setWidth(Math.floor(entry.contentRect.width)));
+    const ro = new ResizeObserver(([e]) => setWidth(Math.floor(e.contentRect.width)));
     ro.observe(el);
     setWidth(Math.floor(el.getBoundingClientRect().width));
     return () => ro.disconnect();
@@ -177,680 +135,901 @@ function useWidth<T extends HTMLElement>() {
   return [ref, width] as const;
 }
 
-// ----------------------------- Componente principal -----------------------------
-
-export function PanelClient() {
-  const [preset, setPreset] = useState('mtd');
-  const [custom, setCustom] = useState({ start: '', end: '' });
-  const [data, setData] = useState<PanelResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = useCallback(async (params: URLSearchParams) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/panel?${params.toString()}`, { cache: 'no-store' });
-      if (res.status === 401 || res.status === 403) {
-        window.location.href = '/login';
-        return;
-      }
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error || 'Error cargando el panel');
-      setData(json);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error cargando el panel');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (preset === 'custom') return;
-    void load(new URLSearchParams({ preset }));
-  }, [preset, load]);
-
-  const applyCustom = () => {
-    if (!custom.start || !custom.end) return;
-    setPreset('custom');
-    void load(new URLSearchParams({ start: custom.start, end: custom.end }));
-  };
-
-  return (
-    <div className={styles.root}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.eyebrow}>V-Gummies</p>
-          <h1 className={styles.title}>Panel de negocio</h1>
-          <PanelTabs active="ventas" />
-          {data && (
-            <p className={styles.subtitle}>
-              {dayLabel(data.range.current.start, { day: 'numeric', month: 'long', year: 'numeric' })} –{' '}
-              {dayLabel(data.range.current.end, { day: 'numeric', month: 'long', year: 'numeric' })} ·{' '}
-              {data.range.compareLabel}
-            </p>
-          )}
-        </div>
-        <nav className={styles.links}>
-          <a href="/ventas">Detalle de ventas</a>
-          <a href="/">Inbox</a>
-        </nav>
-      </header>
-
-      <div className={styles.filters} role="toolbar" aria-label="Periodo">
-        <div className={styles.chips}>
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              className={`${styles.chip} ${preset === p.id ? styles.chipActive : ''}`}
-              aria-pressed={preset === p.id}
-              onClick={() => setPreset(p.id)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-        <div className={styles.customRange}>
-          <input
-            type="date"
-            aria-label="Desde"
-            value={custom.start}
-            onChange={(e) => setCustom((c) => ({ ...c, start: e.target.value }))}
-          />
-          <span>–</span>
-          <input
-            type="date"
-            aria-label="Hasta"
-            value={custom.end}
-            onChange={(e) => setCustom((c) => ({ ...c, end: e.target.value }))}
-          />
-          <button
-            type="button"
-            className={`${styles.chip} ${preset === 'custom' ? styles.chipActive : ''}`}
-            onClick={applyCustom}
-            disabled={!custom.start || !custom.end}
-          >
-            Aplicar
-          </button>
-        </div>
-      </div>
-
-      {error && <div className={`${styles.alert} ${styles.alertCritical}`}>{error}</div>}
-      {!data && loading && <div className={styles.loading}>Cargando datos…</div>}
-
-      {data && (
-        <div className={loading ? styles.dimmed : undefined} aria-busy={loading}>
-          <Alerts alerts={data.alerts} />
-          <KpiRow data={data} />
-          <div className={styles.grid2}>
-            <SalesChart data={data} />
-            <ForecastCard data={data} />
-          </div>
-          <ShopifyReportCard data={data} />
-          <ChannelTable data={data} />
-          <TrendChart data={data} />
-          <div className={styles.grid2even}>
-            <CustomersCard data={data} />
-            <CountriesCard data={data} />
-          </div>
-          <SourcesCard data={data} />
-        </div>
-      )}
-    </div>
-  );
+function niceMax(v: number) {
+  if (v <= 0) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  const n = v / p;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
 }
 
-// ----------------------------- Pestañas -----------------------------
+// ----------------------------- Piezas comunes -----------------------------
 
 export function PanelTabs({ active }: { active: 'ventas' | 'pyg' }) {
   return (
-    <nav className={styles.tabs} aria-label="Secciones del panel">
-      <a href="/panel" className={active === 'ventas' ? styles.tabActive : styles.tab} aria-current={active === 'ventas' ? 'page' : undefined}>
+    <nav className={s.tabs} aria-label="Secciones del panel">
+      <a href="/panel" className={active === 'ventas' ? s.tabActive : s.tab} aria-current={active === 'ventas' ? 'page' : undefined}>
         Ventas
       </a>
-      <a href="/panel/pyg" className={active === 'pyg' ? styles.tabActive : styles.tab} aria-current={active === 'pyg' ? 'page' : undefined}>
+      <a href="/panel/pyg" className={active === 'pyg' ? s.tabActive : s.tab} aria-current={active === 'pyg' ? 'page' : undefined}>
         P&amp;L
       </a>
     </nav>
   );
 }
 
-// ----------------------------- Alertas -----------------------------
-
-function Alerts({ alerts }: { alerts: Alert[] }) {
-  const important = alerts.filter((a) => a.level !== 'info');
-  if (!important.length) return null;
+function Delta({ value, unit = '%', invert = false, label }: { value: number | null; unit?: '%' | 'pp'; invert?: boolean; label?: string }) {
+  if (value === null || !Number.isFinite(value)) return <span className={s.deltaNone}>sin comparación</span>;
+  const flat = Math.abs(value) < 0.05;
+  const good = invert ? value < 0 : value > 0;
+  const n = Math.abs(value).toLocaleString('es-ES', { maximumFractionDigits: 1, minimumFractionDigits: 1 });
   return (
-    <section className={styles.alerts} aria-label="Avisos de datos">
-      {important.map((a, i) => (
-        <div key={i} className={`${styles.alert} ${a.level === 'critical' ? styles.alertCritical : styles.alertWarning}`}>
-          <span className={styles.alertIcon} aria-hidden>
-            {a.level === 'critical' ? '!' : 'i'}
-          </span>
-          <div>
-            <strong>{a.title}</strong>
-            <span className={styles.alertDetail}>{a.detail}</span>
-          </div>
-        </div>
-      ))}
+    <span className={flat ? s.deltaFlat : good ? s.deltaUp : s.deltaDown} title={label}>
+      <span aria-hidden>{flat ? '→' : value > 0 ? '↑' : '↓'}</span> {n} {unit === 'pp' ? 'pp' : '%'}
+      {label ? <span className={s.srOnly}> {label}</span> : null}
+    </span>
+  );
+}
+
+function Spark({ values, color = 'currentColor', height = 36 }: { values: number[]; color?: string; height?: number }) {
+  const id = useMemo(() => `g${Math.random().toString(36).slice(2, 8)}`, []);
+  if (values.length < 2) return null;
+  const w = 160;
+  const h = height;
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const pts = values.map((v, i) => [(i / (values.length - 1)) * w, h - 3 - ((v - min) / (max - min || 1)) * (h - 6)]);
+  const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  return (
+    <svg className={s.spark} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden style={{ color }}>
+      <defs>
+        <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="currentColor" stopOpacity="0.18" />
+          <stop offset="1" stopColor="currentColor" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${line} L${w},${h} L0,${h} Z`} fill={`url(#${id})`} />
+      <path d={line} fill="none" stroke="currentColor" strokeWidth={1.6} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Card({ title, aside, children, className }: { title?: string; aside?: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <section className={`${s.card} ${className ?? ''}`}>
+      {title || aside ? (
+        <header className={s.cardHead}>
+          {title ? <h2>{title}</h2> : <span />}
+          {aside ? <div className={s.cardAside}>{aside}</div> : null}
+        </header>
+      ) : null}
+      {children}
     </section>
+  );
+}
+
+function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: { id: T; label: ReactNode }[]; onChange: (v: T) => void; label: string }) {
+  return (
+    <div className={s.segmented} role="group" aria-label={label}>
+      {options.map((o) => (
+        <button key={o.id} type="button" aria-pressed={value === o.id} onClick={() => onChange(o.id)}>
+          {o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
 // ----------------------------- KPIs -----------------------------
 
-function Delta({ value, unit = '%', invert = false }: { value: number | null; unit?: string; invert?: boolean }) {
-  if (value === null || value === undefined) return <span className={styles.deltaMuted}>sin comparativa</span>;
-  const good = invert ? value < 0 : value > 0;
-  const flat = Math.abs(value) < 0.05;
-  const arrow = flat ? '→' : value > 0 ? '↑' : '↓';
-  return (
-    <span className={flat ? styles.deltaMuted : good ? styles.deltaUp : styles.deltaDown}>
-      {arrow} {Math.abs(value).toLocaleString('es-ES', { maximumFractionDigits: 1 })}
-      {unit === 'pp' ? ' pp' : ' %'}
-    </span>
-  );
-}
-
-function KpiRow({ data }: { data: PanelResponse }) {
+function Kpis({ data }: { data: Data }) {
+  const dNet = data.daily.map((p) => sum(p.values));
+  const dOrders = data.daily.map((p) => sum(p.orders));
+  const dAov = data.daily.map((p) => (sum(p.orders) ? sum(p.values) / sum(p.orders) : 0));
   const k = data.kpis;
   const p = data.previous;
-  const unitsDelta = p.units ? ((k.units - p.units) / p.units) * 100 : null;
-  const tiles = [
-    { label: 'Ventas netas', hint: 'Sin IVA y descontadas devoluciones', value: money(k.netSales), prev: money(p.netSales), delta: <Delta value={data.deltas.netSales} /> },
-    { label: 'Ventas totales', hint: 'Netas + IVA', value: money(k.grossSales), prev: money(p.grossSales), delta: <Delta value={data.deltas.grossSales} /> },
-    { label: 'Pedidos', hint: k.orders ? `${(k.units / k.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 })} unidades por pedido` : 'Pedidos cobrados', value: int.format(k.orders), prev: int.format(p.orders), delta: <Delta value={data.deltas.orders} /> },
-    { label: 'Unidades', hint: k.units ? `${eur2.format(k.netSales / k.units)} por unidad` : 'Unidades vendidas', value: int.format(k.units), prev: int.format(p.units), delta: <Delta value={data.hasPrevious ? unitsDelta : null} /> },
-    { label: 'Ticket medio', hint: 'Venta neta por pedido', value: eur2.format(k.aov), prev: eur2.format(p.aov), delta: <Delta value={data.deltas.aov} /> },
-    { label: 'Devoluciones', hint: 'Pedidos con reembolso', value: pct(k.refundRate), prev: pct(p.refundRate), delta: <Delta value={data.deltas.refundRate} unit="pp" invert /> }
-  ] as { label: string; hint: string; value: string; sub?: string; prev: string; delta: ReactNode }[];
+  const cmp = data.compare.label;
+  const prev = (v: string) => (data.hasPrevious ? <span className={s.kpiPrev}>antes {v}</span> : null);
   return (
-    <section className={styles.kpis} aria-label="Indicadores principales">
-      {tiles.map((t) => (
-        <div key={t.label} className={styles.kpi}>
-          <span className={styles.kpiLabel}>{t.label}</span>
-          <span className={styles.kpiValue}>{t.value}</span>
-          {t.sub && <span className={styles.kpiSub}>{t.sub}</span>}
-          <span className={styles.kpiDelta}>
-            {t.delta}
-            {data.hasPrevious && <span className={styles.kpiPrev}> · antes {t.prev}</span>}
-          </span>
-          <span className={styles.kpiHint}>{t.hint}</span>
-        </div>
-      ))}
+    <section className={s.kpis} aria-label="Indicadores principales">
+      <div className={`${s.kpi} ${s.kpiMain}`}>
+        <span className={s.kpiLabel}>Ventas netas</span>
+        <span className={s.kpiMainValue}>{money(k.netSales)}</span>
+        <span className={s.kpiLine}>
+          {data.hasPrevious ? <Delta value={data.deltas.netSales} label={cmp} /> : <span className={s.deltaNone}>sin comparación</span>}
+          {prev(money(p.netSales))}
+        </span>
+        <Spark values={dNet} color="#2c8a8f" height={56} />
+        <span className={s.kpiHint}>
+          Sin IVA, tras descuentos y devoluciones · {money(k.grossSales)} con IVA
+        </span>
+      </div>
+      <div className={s.kpi}>
+        <span className={s.kpiLabel}>Pedidos</span>
+        <span className={s.kpiValue}>{int.format(k.orders)}</span>
+        <span className={s.kpiLine}>
+          <Delta value={data.hasPrevious ? data.deltas.orders : null} label={cmp} />
+          {prev(int.format(p.orders))}
+        </span>
+        <Spark values={dOrders} color="#334fb4" />
+      </div>
+      <div className={s.kpi}>
+        <span className={s.kpiLabel}>Unidades</span>
+        <span className={s.kpiValue}>{int.format(k.units)}</span>
+        <span className={s.kpiLine}>
+          <Delta value={data.hasPrevious ? data.deltas.units : null} label={cmp} />
+          {prev(int.format(p.units))}
+        </span>
+        <span className={s.kpiHint}>
+          {k.orders ? `${(k.units / k.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 })} por pedido` : ''}
+          {k.units ? ` · ${eur2.format(k.netSales / k.units)} por unidad` : ''}
+        </span>
+      </div>
+      <div className={s.kpi}>
+        <span className={s.kpiLabel}>Ticket medio</span>
+        <span className={s.kpiValue}>{eur2.format(k.aov)}</span>
+        <span className={s.kpiLine}>
+          <Delta value={data.hasPrevious ? data.deltas.aov : null} label={cmp} />
+          {prev(eur2.format(p.aov))}
+        </span>
+        <Spark values={dAov} color="#6b6680" />
+      </div>
+      <div className={s.kpi}>
+        <span className={s.kpiLabel}>Devoluciones</span>
+        <span className={s.kpiValue}>{pct(k.refundRate)}</span>
+        <span className={s.kpiLine}>
+          <Delta value={data.hasPrevious ? data.deltas.refundRate : null} unit="pp" invert label={cmp} />
+          {prev(pct(p.refundRate))}
+        </span>
+        <span className={s.kpiHint}>Pedidos con reembolso</span>
+      </div>
     </section>
   );
 }
 
-// ----------------------------- Leyenda -----------------------------
-
-function Legend({ platforms }: { platforms: string[] }) {
+function Insights({ items }: { items: Data['insights'] }) {
+  if (!items.length) return null;
   return (
-    <ul className={styles.legend}>
-      {platforms.map((p) => (
-        <li key={p}>
-          <span className={styles.swatch} style={{ background: PLATFORM_COLORS[p] ?? '#8f889f' }} />
-          {PLATFORM_LABELS[p] ?? p}
+    <ul className={s.insights} aria-label="Lo más destacado">
+      {items.map((i) => (
+        <li key={i.text} className={i.tone === 'up' ? s.insUp : i.tone === 'down' ? s.insDown : s.insNeutral}>
+          <span className={s.insDot} aria-hidden>
+            {i.tone === 'up' ? '↑' : i.tone === 'down' ? '↓' : '★'}
+          </span>
+          <span>{i.text}</span>
         </li>
       ))}
     </ul>
   );
 }
 
-// ----------------------------- Grafica de barras apiladas -----------------------------
+// ----------------------------- Ventas por periodo -----------------------------
 
-type StackDatum = { key: string; label: string; longLabel: string; values: Record<string, number>; orders?: Record<string, number> };
-
-function StackedBars({ data, platforms, height = 240 }: { data: StackDatum[]; platforms: string[]; height?: number }) {
+function SalesChart({ data }: { data: Data }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const padL = 56;
-  const padB = 26;
-  const padT = 8;
-  const innerW = Math.max(0, width - padL - 8);
-  const innerH = height - padB - padT;
-  const totals = data.map((d) => platforms.reduce((a, p) => a + Math.max(0, d.values[p] ?? 0), 0));
-  const max = niceMax(Math.max(1, ...totals));
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => t * max);
-  const step = data.length ? innerW / data.length : 0;
-  const barW = Math.max(2, Math.min(36, step * 0.72));
-  const labelEvery = Math.max(1, Math.ceil(data.length / Math.max(1, Math.floor(innerW / 64))));
-  const y = (v: number) => padT + innerH - (v / max) * innerH;
+  const [metric, setMetric] = useState<'net' | 'orders'>('net');
+  const [showPrev, setShowPrev] = useState(true);
+  const { points, previous, granularity } = data.series;
+  const visible = PLATFORMS.filter((p) => data.channel === 'all' || data.channel === p);
+  const val = (p: Point, pl: string) => (metric === 'net' ? p.values[pl] ?? 0 : p.orders[pl] ?? 0);
+  const tot = (p: Point | undefined) => (p ? visible.reduce((a, pl) => a + val(p, pl), 0) : 0);
+  const withPrev = showPrev && data.hasPrevious;
+  const h = 300;
+  const left = 52;
+  const bottom = 28;
+  const plotW = Math.max(0, width - left);
+  const max = niceMax(Math.max(...points.map(tot), ...(withPrev ? previous.slice(0, points.length).map(tot) : []), 1));
+  const step = points.length ? plotW / points.length : 0;
+  const barW = Math.max(3, Math.min(30, step * 0.62));
+  const y = (v: number) => h - bottom - (v / max) * (h - bottom - 12);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => max * t);
+  const every = Math.ceil(points.length / Math.max(1, Math.floor(plotW / 58)));
+  const fmt = metric === 'net' ? compact : (v: number) => int.format(v);
+  const prevPath = withPrev
+    ? previous
+        .slice(0, points.length)
+        .map((p, i) => `${i ? 'L' : 'M'}${(left + i * step + step / 2).toFixed(1)},${y(tot(p)).toFixed(1)}`)
+        .join(' ')
+    : '';
+  const total = points.reduce((a, p) => a + tot(p), 0);
+  const best = points.reduce((b, p, i) => (tot(p) > tot(points[b] ?? p) ? i : b), 0);
 
   return (
-    <div ref={ref} className={styles.chartWrap} onMouseLeave={() => setHover(null)}>
-      {width > 0 && (
-        <svg width={width} height={height} role="img" aria-label="Gráfica de ventas netas por canal">
-          {ticks.map((t) => (
-            <g key={t}>
-              <line x1={padL} x2={width - 8} y1={y(t)} y2={y(t)} className={t === 0 ? styles.axis : styles.grid} />
-              <text x={padL - 8} y={y(t) + 4} textAnchor="end" className={styles.tick}>
-                {compactMoney(t)}
-              </text>
-            </g>
-          ))}
-          {data.map((d, i) => {
-            const x = padL + i * step + (step - barW) / 2;
-            let acc = 0;
-            const segs = platforms
-              .map((p) => ({ p, v: Math.max(0, d.values[p] ?? 0) }))
-              .filter((s) => s.v > 0);
-            return (
-              <g key={d.key} opacity={hover === null || hover === i ? 1 : 0.45}>
-                {segs.map((s, si) => {
-                  const y0 = y(acc);
-                  acc += s.v;
-                  const y1 = y(acc);
-                  const h = Math.max(0, y0 - y1 - (si > 0 ? 2 : 0));
-                  const isTop = si === segs.length - 1;
-                  return (
-                    <path
-                      key={s.p}
-                      d={barPath(x, y1, barW, h, isTop ? Math.min(4, barW / 2, h) : 0)}
-                      fill={PLATFORM_COLORS[s.p] ?? '#8f889f'}
-                    />
-                  );
-                })}
-                {i % labelEvery === 0 && (
-                  <text x={x + barW / 2} y={height - 8} textAnchor="middle" className={styles.tick}>
-                    {d.label}
-                  </text>
-                )}
-                <rect
-                  x={padL + i * step}
-                  y={padT}
-                  width={step}
-                  height={innerH}
-                  fill="transparent"
-                  onMouseEnter={() => setHover(i)}
-                />
-              </g>
-            );
-          })}
-        </svg>
-      )}
-      {hover !== null && data[hover] && (
-        <div
-          className={styles.tooltip}
-          style={{
-            left: Math.min(Math.max(padL + hover * step + step / 2, 90), width - 90),
-            top: 0
-          }}
-        >
-          <strong>{data[hover].longLabel}</strong>
-          {platforms.map((p) => (
-            <div key={p} className={styles.tooltipRow}>
-              <span className={styles.swatch} style={{ background: PLATFORM_COLORS[p] }} />
-              <span>{PLATFORM_LABELS[p]}</span>
-              <span className={styles.tooltipValue}>{money(data[hover].values[p] ?? 0)}</span>
-            </div>
-          ))}
-          <div className={`${styles.tooltipRow} ${styles.tooltipTotal}`}>
-            <span />
-            <span>Total</span>
-            <span className={styles.tooltipValue}>{money(totals[hover])}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function barPath(x: number, y: number, w: number, h: number, r: number) {
-  if (h <= 0) return '';
-  if (r <= 0) return `M${x},${y}h${w}v${h}h${-w}Z`;
-  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
-}
-
-function niceMax(v: number) {
-  const exp = Math.pow(10, Math.floor(Math.log10(v)));
-  for (const m of [1, 1.2, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * exp >= v) return m * exp;
-  return 10 * exp;
-}
-
-function SalesChart({ data }: { data: PanelResponse }) {
-  const g = data.series.granularity;
-  const active = PLATFORMS.filter((p) => data.series.points.some((pt) => (pt.values[p] ?? 0) > 0));
-  const platforms = active.length ? [...active] : ['shopify'];
-  const rows: StackDatum[] = data.series.points.map((pt) => ({
-    key: pt.key,
-    label: bucketLabel(pt.key, g),
-    longLabel: bucketLabel(pt.key, g, true),
-    values: pt.values,
-    orders: pt.orders
-  }));
-  const unit = g === 'day' ? 'día' : g === 'week' ? 'semana' : 'mes';
-  return (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Ventas netas por {unit}</h2>
-        <Legend platforms={platforms} />
-      </div>
-      <StackedBars data={rows} platforms={platforms} />
-    </section>
-  );
-}
-
-function TrendChart({ data }: { data: PanelResponse }) {
-  const months = [...new Set(data.trend.map((t) => t.month))].sort();
-  const platforms = PLATFORMS.filter((p) => data.trend.some((t) => t.platform === p && t.net > 0));
-  const rows: StackDatum[] = months.map((m) => {
-    const values: Record<string, number> = {};
-    for (const t of data.trend.filter((t) => t.month === m)) values[t.platform] = t.net;
-    return { key: m, label: monthLabel(m), longLabel: monthLabel(m, true), values };
-  });
-  return (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Evolución de los últimos 12 meses</h2>
-        <Legend platforms={platforms.length ? [...platforms] : ['shopify']} />
-      </div>
-      <StackedBars data={rows} platforms={platforms.length ? [...platforms] : ['shopify']} height={220} />
-    </section>
-  );
-}
-
-// ----------------------------- Prevision -----------------------------
-
-function ForecastCard({ data }: { data: PanelResponse }) {
-  const f = data.forecast;
-  return (
-    <section className={`${styles.card} ${styles.forecast}`}>
-      <h2>Previsión de cierre de mes</h2>
-      {!f ? (
-        <p className={styles.muted}>Disponible a partir del segundo día del mes.</p>
-      ) : (
+    <Card
+      className={s.salesCard}
+      title={`${metric === 'net' ? 'Ventas netas' : 'Pedidos'} por ${granularity === 'day' ? 'día' : granularity === 'week' ? 'semana' : 'mes'} y canal`}
+      aside={
         <>
-          <p className={styles.forecastMonth}>{capitalize(monthLabel(f.month, true))}</p>
-          <p className={styles.forecastValue}>{money(f.projectedNet)}</p>
-          <p className={styles.muted}>al ritmo medio del mes ({f.daysElapsed} de {f.daysInMonth} días)</p>
-          <div className={styles.progress} aria-hidden>
-            <span style={{ width: `${Math.min(100, (f.netToDate / Math.max(1, f.projectedNet)) * 100)}%` }} />
-          </div>
-          <dl className={styles.facts}>
-            <div>
-              <dt>Llevamos</dt>
-              <dd>{money(f.netToDate)}</dd>
-            </div>
-            <div>
-              <dt>Al ritmo de los últimos 7 días</dt>
-              <dd>{money(f.projectedByLast7)}</dd>
-            </div>
-            <div>
-              <dt>Mes anterior completo</dt>
-              <dd>
-                {money(f.previousMonthNet)} <Delta value={f.vsPreviousMonth} />
-              </dd>
-            </div>
-          </dl>
+          {data.hasPrevious ? (
+            <label className={s.toggle}>
+              <input type="checkbox" checked={showPrev} onChange={(e) => setShowPrev(e.target.checked)} />
+              Comparar
+            </label>
+          ) : null}
+          <Segmented
+            label="Métrica del gráfico"
+            value={metric}
+            onChange={setMetric}
+            options={[
+              { id: 'net', label: 'Ventas' },
+              { id: 'orders', label: 'Pedidos' }
+            ]}
+          />
         </>
-      )}
-    </section>
+      }
+    >
+      <p className={s.chartSummary}>
+        <strong>{metric === 'net' ? money(total) : int.format(total)}</strong> en el periodo · mejor{' '}
+        {granularity === 'day' ? 'día' : granularity === 'week' ? 'semana' : 'mes'}:{' '}
+        <strong>{points[best] ? bucket(points[best].key, granularity, true) : '—'}</strong>
+        {points[best] ? ` (${fmt(tot(points[best]))})` : ''}
+      </p>
+      <div className={s.chartWrap} ref={ref}>
+        {width > 0 ? (
+          <svg width={width} height={h} role="img" aria-label="Ventas por periodo y canal" onMouseLeave={() => setHover(null)}>
+            {ticks.map((t) => (
+              <g key={t}>
+                <line x1={left} x2={width} y1={y(t)} y2={y(t)} className={t === 0 ? s.baseline : s.grid} />
+                <text x={left - 10} y={y(t) + 4} textAnchor="end" className={s.axis}>
+                  {fmt(t)}
+                </text>
+              </g>
+            ))}
+            {points.map((p, i) => {
+              let acc = 0;
+              const x = left + i * step + (step - barW) / 2;
+              const dim = hover !== null && hover !== i;
+              const segs = visible.filter((pl) => val(p, pl) > 0);
+              return (
+                <g key={p.key} onMouseEnter={() => setHover(i)}>
+                  <rect x={left + i * step} y={0} width={step} height={h - bottom} fill="transparent" />
+                  {hover === i ? <rect x={left + i * step + 1} y={4} width={step - 2} height={h - bottom - 4} rx={6} className={s.hoverBand} /> : null}
+                  {segs.map((pl, j) => {
+                    const y0 = y(acc);
+                    acc += val(p, pl);
+                    const y1 = y(acc);
+                    const top = j === segs.length - 1;
+                    const r = top ? Math.min(5, barW / 2.5) : 0;
+                    const hh = Math.max(0, y0 - y1 - (j ? 2 : 0));
+                    return (
+                      <path
+                        key={pl}
+                        d={roundedTop(x, y1, barW, hh, r)}
+                        fill={COLOR[pl]}
+                        opacity={dim ? 0.45 : 1}
+                        className={s.bar}
+                      />
+                    );
+                  })}
+                  {i % every === 0 ? (
+                    <text x={left + i * step + step / 2} y={h - 8} textAnchor="middle" className={s.axis}>
+                      {bucket(p.key, granularity)}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+            {prevPath ? <path d={prevPath} className={s.prevLine} /> : null}
+          </svg>
+        ) : null}
+        {hover !== null && points[hover] ? (
+          <div className={s.tip} style={{ left: Math.min(Math.max(left + hover * step + step / 2, 110), width - 110) }}>
+            <b>{cap(bucket(points[hover].key, granularity, true))}</b>
+            {visible.map((pl) => (
+              <span key={pl} className={s.tipRow}>
+                <i style={{ background: COLOR[pl] }} /> {LABEL[pl]} <em>{metric === 'net' ? money(val(points[hover], pl)) : int.format(val(points[hover], pl))}</em>
+              </span>
+            ))}
+            <span className={s.tipTotal}>
+              Total <em>{metric === 'net' ? money(tot(points[hover])) : int.format(tot(points[hover]))}</em>
+            </span>
+            {withPrev && previous[hover] ? (
+              <span className={s.tipPrev}>
+                Comparación <em>{metric === 'net' ? money(tot(previous[hover])) : int.format(tot(previous[hover]))}</em>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      <ul className={s.legend}>
+        {visible.map((pl) => (
+          <li key={pl}>
+            <i style={{ background: COLOR[pl] }} /> {LABEL[pl]}
+          </li>
+        ))}
+        {withPrev ? (
+          <li>
+            <i className={s.legDash} /> {cap(data.compare.label.replace(/^vs /, ''))}
+          </li>
+        ) : null}
+      </ul>
+    </Card>
+  );
+}
+
+function roundedTop(x: number, y: number, w: number, h: number, r: number) {
+  if (h <= 0) return '';
+  const rr = Math.min(r, h, w / 2);
+  return `M${x},${y + h} L${x},${y + rr} Q${x},${y} ${x + rr},${y} L${x + w - rr},${y} Q${x + w},${y} ${x + w},${y + rr} L${x + w},${y + h} Z`;
+}
+
+// ----------------------------- Previsión -----------------------------
+
+function Forecast({ data }: { data: Data }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const f = data.forecast;
+  const pulse = data.pulse;
+  if (!f) {
+    return (
+      <Card title="Previsión de cierre">
+        <p className={s.muted}>La previsión aparece a partir del segundo día del mes.</p>
+      </Card>
+    );
+  }
+  const h = 96;
+  const days = Math.max(pulse.daysInMonth, pulse.previous.length);
+  const last = pulse.current.at(-1) ?? 0;
+  const max = Math.max(f.projectedNet, ...pulse.previous, last, 1) * 1.05;
+  const x = (d: number) => ((d - 1) / Math.max(1, days - 1)) * width;
+  const y = (v: number) => h - (v / max) * h;
+  const line = (arr: number[]) => arr.map((v, i) => `${i ? 'L' : 'M'}${x(i + 1).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const progress = Math.min(100, (f.netToDate / f.projectedNet) * 100);
+  const sameDayPrev = pulse.previous[Math.min(pulse.today, pulse.previous.length) - 1] ?? 0;
+  return (
+    <Card title={`Previsión de ${monthName(f.month, true).split(' ')[0]}`} className={s.forecastCard}>
+      <p className={s.forecastValue}>{money(f.projectedNet)}</p>
+      <p className={s.forecastSub}>
+        <Delta value={f.vsPreviousMonth} /> frente a {money(f.previousMonthNet)} del mes anterior
+      </p>
+      <div className={s.progress} aria-label={`Llevamos el ${Math.round(progress)} % de la previsión`}>
+        <span style={{ width: `${progress}%` }} />
+      </div>
+      <p className={s.progressText}>
+        <strong>{money(f.netToDate)}</strong> vendidos · día {f.daysElapsed + 1} de {f.daysInMonth}
+      </p>
+      <div ref={ref} className={s.pulse}>
+        {width > 0 ? (
+          <svg width={width} height={h + 4} role="img" aria-label="Ventas acumuladas del mes frente al mes anterior">
+            <path d={line(pulse.previous)} className={s.pulsePrev} />
+            {pulse.today < pulse.daysInMonth ? <path d={`M${x(pulse.today)},${y(last)} L${x(pulse.daysInMonth)},${y(f.projectedNet)}`} className={s.pulseProj} /> : null}
+            <path d={line(pulse.current)} className={s.pulseCur} />
+            <circle cx={x(pulse.today)} cy={y(last)} r={3.5} className={s.pulseDot} />
+          </svg>
+        ) : null}
+      </div>
+      <dl className={s.facts}>
+        <div>
+          <dt>A estas alturas del mes pasado</dt>
+          <dd>
+            {money(sameDayPrev)} <Delta value={change(last, sameDayPrev)} />
+          </dd>
+        </div>
+        <div>
+          <dt>Al ritmo de los últimos 7 días</dt>
+          <dd>{money(f.projectedByLast7)}</dd>
+        </div>
+      </dl>
+      <ul className={s.legendSmall}>
+        <li><i className={s.lgCur} /> Este mes</li>
+        <li><i className={s.lgProj} /> Previsión</li>
+        <li><i className={s.lgPrev} /> Mes anterior</li>
+      </ul>
+    </Card>
+  );
+}
+
+// ----------------------------- Canales -----------------------------
+
+function Channels({ data }: { data: Data }) {
+  const dailyBy = (pl: string) => data.daily.map((p) => p.values[pl] ?? 0);
+  return (
+    <div className={s.channels}>
+      {data.channels.map((c) => (
+        <article key={c.platform} className={`${s.channel} ${c.selected ? '' : s.channelDim}`}>
+          <header className={s.channelHead}>
+            <span className={s.channelName}>
+              <i style={{ background: COLOR[c.platform] }} /> {LABEL[c.platform]}
+            </span>
+            <span className={s.channelShare}>{pct(c.share, 0)} del total</span>
+          </header>
+          <div className={s.channelMain}>
+            <div>
+              <p className={s.channelValue}>{money(c.kpis.netSales)}</p>
+              <p className={s.channelDelta}>
+                {data.hasPrevious ? <Delta value={c.delta} label={data.compare.label} /> : null}
+                {data.hasPrevious ? <span className={s.kpiPrev}>antes {money(c.previous.netSales)}</span> : null}
+              </p>
+            </div>
+            <Spark values={dailyBy(c.platform)} color={COLOR[c.platform]} height={44} />
+          </div>
+          <div className={s.shareTrack}>
+            <span style={{ width: `${c.share}%`, background: COLOR[c.platform] }} />
+          </div>
+          <dl className={s.channelFacts}>
+            <div><dt>Pedidos</dt><dd>{int.format(c.kpis.orders)}</dd></div>
+            <div><dt>Unidades</dt><dd>{int.format(c.kpis.units)}</dd></div>
+            <div><dt>Ticket medio</dt><dd>{c.kpis.orders ? eur2.format(c.kpis.aov) : '—'}</dd></div>
+            <div><dt>Precio por unidad</dt><dd>{c.kpis.units ? eur2.format(c.kpis.netSales / c.kpis.units) : '—'}</dd></div>
+          </dl>
+          <p className={s.source}>
+            {c.platform === 'shopify'
+              ? 'Mismo criterio que el informe de Shopify «Ventas por variante de producto».'
+              : 'API de Amazon: importe de los pedidos cobrados. Amazon cuenta artículos (packs).'}
+          </p>
+        </article>
+      ))}
+    </div>
   );
 }
 
 // ----------------------------- Informe Shopify -----------------------------
 
-function ShopifyReportCard({ data }: { data: PanelResponse }) {
-  const c = data.shopifyReport.current;
-  const p = data.shopifyReport.previous;
-  const rows: { label: string; key: keyof ShopifyReport; sign?: '-'; strong?: boolean }[] = [
-    { label: 'Ventas brutas', key: 'grossSales' },
-    { label: 'Descuentos', key: 'discounts', sign: '-' },
-    { label: 'Reversiones de ventas', key: 'returns', sign: '-' },
-    { label: 'Ventas netas', key: 'netSales', strong: true },
-    { label: 'Impuestos', key: 'taxes' },
-    { label: 'Ventas totales', key: 'totalSales', strong: true }
+function ShopifyReport({ data }: { data: Data }) {
+  const cur = data.shopifyReport.current;
+  const prev = data.shopifyReport.previous;
+  const rows: [string, keyof Report, boolean?, boolean?][] = [
+    ['Ventas brutas', 'grossSales'],
+    ['Descuentos', 'discounts', true],
+    ['Devoluciones', 'returns', true],
+    ['Ventas netas', 'netSales', false, true],
+    ['Impuestos', 'taxes'],
+    ['Ventas totales', 'totalSales', false, true]
   ];
-  if (!c.orders && !c.grossSales) return null;
+  const max = Math.max(cur.grossSales, 1);
   return (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Shopify · mismo criterio que el informe de Shopify</h2>
-        <span className={styles.muted}>«Copia de ventas por variante de producto» · sin envíos</span>
-      </div>
-      <div className={styles.tableScroll}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Concepto</th>
-              <th className={styles.num}>Periodo</th>
-              <th className={styles.num}>Periodo anterior</th>
-              <th className={styles.num}>Var.</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => {
-              const cur = c[r.key];
-              const prev = p[r.key];
-              const fmtv = (v: number) => (r.sign && v ? `−${eur2.format(v)}` : eur2.format(v));
-              return (
-                <tr key={r.key}>
-                  <td>{r.strong ? <strong>{r.label}</strong> : r.label}</td>
-                  <td className={styles.num}>{r.strong ? <strong>{fmtv(cur)}</strong> : fmtv(cur)}</td>
-                  <td className={styles.num}>{data.hasPrevious ? fmtv(prev) : '—'}</td>
-                  <td className={styles.num}>{data.hasPrevious ? <Delta value={prev ? ((cur - prev) / Math.abs(prev)) * 100 : null} invert={Boolean(r.sign)} /> : '—'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p className={styles.footnote}>
-        {int.format(c.orders)} pedidos · {int.format(c.units)} unidades · envíos cobrados aparte: {eur2.format(c.shipping)} (con IVA).
-        Las devoluciones cuentan el día del reembolso, como en Shopify.
-      </p>
-    </section>
-  );
-}
-
-// ----------------------------- Tabla de canales -----------------------------
-
-const SOURCE_LABEL = { api: 'real', estimated: 'estimada', missing: 'sin datos' } as const;
-
-function ChannelTable({ data }: { data: PanelResponse }) {
-  const rows = data.channels.filter((c) => PLATFORMS.includes(c.platform as (typeof PLATFORMS)[number]));
-  const total = data.kpis;
-  return (
-    <section className={styles.card}>
-      <div className={styles.cardHead}>
-        <h2>Rendimiento por canal</h2>
-        <a className={styles.muted} href="/panel/pyg">Costes y margen en el P&amp;L →</a>
-      </div>
-      <div className={styles.tableScroll}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Canal</th>
-              <th className={styles.num}>Ventas netas</th>
-              <th className={styles.num}>Var.</th>
-              <th>Peso</th>
-              <th className={styles.num}>Pedidos</th>
-              <th className={styles.num}>Ticket medio</th>
-              <th className={styles.num}>Unidades</th>
-              <th className={styles.num}>Uds. por pedido</th>
-              <th className={styles.num}>Precio medio unidad</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((c) => (
-              <tr key={c.platform}>
-                <td>
-                  <span className={styles.swatch} style={{ background: PLATFORM_COLORS[c.platform] }} />
-                  {PLATFORM_LABELS[c.platform] ?? c.platform}
-                </td>
-                <td className={styles.num}>{c.kpis.orders ? money(c.kpis.netSales) : '—'}</td>
-                <td className={styles.num}>{c.kpis.orders ? <Delta value={c.delta} /> : '—'}</td>
-                <td>
-                  <div className={styles.shareBar}>
-                    <span style={{ width: `${c.share}%`, background: PLATFORM_COLORS[c.platform] }} />
-                  </div>
-                  <span className={styles.shareText}>{pct(c.share, 0)}</span>
-                </td>
-                <td className={styles.num}>{int.format(c.kpis.orders)}</td>
-                <td className={styles.num}>{c.kpis.orders ? eur2.format(c.kpis.aov) : '—'}</td>
-                <td className={styles.num}>{int.format(c.kpis.units)}</td>
-                <td className={styles.num}>{c.kpis.orders ? (c.kpis.units / c.kpis.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—'}</td>
-                <td className={styles.num}>{c.kpis.units ? eur2.format(c.kpis.netSales / c.kpis.units) : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td>Total</td>
-              <td className={styles.num}>{money(total.netSales)}</td>
-              <td className={styles.num}>
-                <Delta value={data.deltas.netSales} />
-              </td>
-              <td />
-              <td className={styles.num}>{int.format(total.orders)}</td>
-              <td className={styles.num}>{eur2.format(total.aov)}</td>
-              <td className={styles.num}>{int.format(total.units)}</td>
-              <td className={styles.num}>{total.orders ? (total.units / total.orders).toLocaleString('es-ES', { maximumFractionDigits: 2 }) : '—'}</td>
-              <td className={styles.num}>{total.units ? eur2.format(total.netSales / total.units) : '—'}</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
-      <p className={styles.footnote}>
-        <strong>Fuentes:</strong> Shopify con el mismo criterio que su informe «Ventas por variante de producto» (ventas netas sin
-        IVA ni envíos). Amazon desde la API de pedidos de Amazon: importe total de los pedidos cobrados, con IVA, envío y
-        promociones; puede diferir de Vendorati, que usa su propio criterio.
-        <br />
-        Unidades: Shopify cuenta cada artículo de la línea de pedido; Amazon cuenta artículos del pedido según su API.
-      </p>
-    </section>
-  );
-}
-
-
-// ----------------------------- Clientes y paises -----------------------------
-
-function CustomersCard({ data }: { data: PanelResponse }) {
-  const rows = data.customers.filter((c) => c.customers > 0);
-  return (
-    <section className={styles.card}>
-      <h2>Clientes del periodo</h2>
-      {!rows.length ? (
-        <p className={styles.muted}>No hay emails de cliente en el periodo.</p>
-      ) : (
-        <div className={styles.customerList}>
-          {rows.map((c) => {
-            const returningPct = (c.returningCustomers / c.customers) * 100;
-            return (
-              <div key={c.platform} className={styles.customerRow}>
-                <div className={styles.customerHead}>
-                  <span>
-                    <span className={styles.swatch} style={{ background: PLATFORM_COLORS[c.platform] }} />
-                    {PLATFORM_LABELS[c.platform] ?? c.platform}
-                  </span>
-                  <span className={styles.muted}>{int.format(c.customers)} clientes</span>
-                </div>
-                <div className={styles.split} aria-hidden>
-                  <span className={styles.splitNew} style={{ width: `${100 - returningPct}%` }} />
-                  <span className={styles.splitReturning} style={{ width: `${returningPct}%` }} />
-                </div>
-                <div className={styles.customerFacts}>
-                  <span>Nuevos: {int.format(c.customers - c.returningCustomers)} ({pct(100 - returningPct, 0)})</span>
-                  <span>Recurrentes: {int.format(c.returningCustomers)} ({pct(returningPct, 0)})</span>
-                  <span>Compran 2+ veces en el periodo: {int.format(c.multiOrderCustomers)} ({pct((c.multiOrderCustomers / c.customers) * 100, 0)})</span>
-                </div>
-              </div>
-            );
-          })}
-          <p className={styles.footnote}>
-            Recurrente = ya había comprado antes del periodo. Amazon suele ocultar el email del comprador, por eso puede no
-            aparecer.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function CountriesCard({ data }: { data: PanelResponse }) {
-  const max = Math.max(1, ...data.countries.map((c) => c.netSales));
-  return (
-    <section className={styles.card}>
-      <h2>Ventas por país</h2>
-      {!data.countries.length ? (
-        <p className={styles.muted}>Sin datos de país.</p>
-      ) : (
-        <ul className={styles.countries}>
-          {data.countries.map((c) => (
-            <li key={c.country}>
-              <span className={styles.countryName}>{COUNTRY_NAMES[c.country] ?? c.country}</span>
-              <span className={styles.countryBar}>
-                <span style={{ width: `${(c.netSales / max) * 100}%` }} />
-              </span>
-              <span className={styles.countryValue}>{money(c.netSales)}</span>
-              <span className={styles.countryOrders}>{int.format(c.orders)} ped.</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-// ----------------------------- Fuentes de datos -----------------------------
-
-function SourcesCard({ data }: { data: PanelResponse }) {
-  const infos = data.alerts.filter((a) => a.level === 'info');
-  const channelBy = useMemo(() => Object.fromEntries(data.channels.map((c) => [c.platform, c])), [data.channels]);
-  return (
-    <section className={styles.card}>
-      <h2>Estado de las fuentes de datos</h2>
-      <div className={styles.sources}>
-        {data.freshness.map((f) => {
-          const c = channelBy[f.platform];
-          const ok = f.lastOrderAt && (!f.lastSyncStatus || f.lastSyncStatus === 'ok');
-          const stale = f.lastOrderAt && Date.now() - new Date(f.lastOrderAt).getTime() > 48 * 3_600_000;
-          const state = !f.lastOrderAt ? 'Sin conectar' : !ok || stale ? 'Revisar' : 'Sincronizando';
-          const tone = !f.lastOrderAt || !ok || stale ? styles.statusBad : styles.statusOk;
+    <Card title="Informe de Shopify" aside={<span className={s.muted}>«Copia de ventas por variante de producto» · envíos aparte</span>}>
+      <div className={s.reportGrid}>
+        {rows.map(([label, key, neg, strong]) => {
+          const d = change(cur[key], prev[key]);
           return (
-            <div key={f.platform} className={styles.source}>
-              <div className={styles.sourceHead}>
-                <span>
-                  <span className={styles.swatch} style={{ background: PLATFORM_COLORS[f.platform] }} />
-                  <strong>{PLATFORM_LABELS[f.platform] ?? f.platform}</strong>
-                </span>
-                <span className={`${styles.status} ${tone}`}>
-                  <span aria-hidden>{tone === styles.statusOk ? '●' : '▲'}</span> {state}
-                </span>
-              </div>
-              <dl className={styles.sourceFacts}>
-                <div>
-                  <dt>Último pedido</dt>
-                  <dd>{relativeTime(f.lastOrderAt)}</dd>
-                </div>
-                <div>
-                  <dt>Última sincronización</dt>
-                  <dd>{relativeTime(f.lastSyncRunAt)}</dd>
-                </div>
-                <div>
-                  <dt>Comisiones</dt>
-                  <dd>{c?.kpis.orders ? SOURCE_LABEL[c.contribution.feesSource] : '—'}</dd>
-                </div>
-                <div>
-                  <dt>Publicidad</dt>
-                  <dd>{c?.kpis.orders ? SOURCE_LABEL[c.contribution.adsSource] : '—'}</dd>
-                </div>
-              </dl>
+            <div key={key} className={`${s.reportRow} ${strong ? s.reportStrong : ''}`}>
+              <span className={s.reportLabel}>{label}</span>
+              <span className={s.reportBar}>
+                <i style={{ width: `${(Math.abs(cur[key]) / max) * 100}%` }} className={neg ? s.reportNeg : strong ? s.reportPos : undefined} />
+              </span>
+              <span className={s.reportValue}>
+                {neg && cur[key] ? '−' : ''}
+                {eur2.format(cur[key])}
+              </span>
+              <span className={s.reportDelta}>{data.hasPrevious ? <Delta value={d} invert={neg} /> : null}</span>
             </div>
           );
         })}
       </div>
-      {infos.length > 0 && (
-        <ul className={styles.infoList}>
-          {infos.map((a, i) => (
-            <li key={i}>
-              <strong>{a.title}.</strong> {a.detail}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <p className={s.footnote}>
+        {int.format(cur.orders)} pedidos · {int.format(cur.units)} unidades · envíos cobrados aparte: {eur2.format(cur.shipping)} (con IVA). Las
+        devoluciones cuentan el día del reembolso, como en Shopify.
+      </p>
+    </Card>
+  );
+}
+
+// ----------------------------- Evolución 12 meses -----------------------------
+
+function Trend({ data }: { data: Data }) {
+  const [ref, width] = useWidth<HTMLDivElement>();
+  const [hover, setHover] = useState<number | null>(null);
+  const months = [...new Set(data.trend.map((t) => t.month))].sort();
+  const by = (m: string, p: string) => data.trend.find((t) => t.month === m && t.platform === p)?.net ?? 0;
+  const visible = PLATFORMS.filter((p) => data.channel === 'all' || data.channel === p);
+  const totals = months.map((m) => visible.reduce((a, p) => a + by(m, p), 0));
+  const h = 220;
+  const left = 52;
+  const max = niceMax(Math.max(...totals, 1));
+  const step = months.length ? (width - left) / months.length : 0;
+  const bw = Math.min(38, step * 0.6);
+  const y = (v: number) => h - (v / max) * (h - 10);
+  const best = totals.indexOf(Math.max(...totals));
+  return (
+    <Card title="Evolución de los últimos 12 meses" aside={<span className={s.muted}>Ventas netas por mes y canal</span>}>
+      <div ref={ref} className={s.chartWrap}>
+        {width > 0 ? (
+          <svg width={width} height={h + 26} role="img" aria-label="Ventas netas mensuales de los últimos 12 meses" onMouseLeave={() => setHover(null)}>
+            {[0, 0.5, 1].map((t) => (
+              <g key={t}>
+                <line x1={left} x2={width} y1={y(max * t)} y2={y(max * t)} className={t === 0 ? s.baseline : s.grid} />
+                <text x={left - 10} y={y(max * t) + 4} textAnchor="end" className={s.axis}>
+                  {compact(max * t)}
+                </text>
+              </g>
+            ))}
+            {months.map((m, i) => {
+              let acc = 0;
+              const x = left + i * step + (step - bw) / 2;
+              const segs = visible.filter((p) => by(m, p) > 0);
+              return (
+                <g key={m} onMouseEnter={() => setHover(i)}>
+                  <rect x={left + i * step} y={0} width={step} height={h} fill="transparent" />
+                  {segs.map((p, j) => {
+                    const y0 = y(acc);
+                    acc += by(m, p);
+                    const y1 = y(acc);
+                    return (
+                      <path
+                        key={p}
+                        d={roundedTop(x, y1, bw, Math.max(0, y0 - y1 - (j ? 2 : 0)), j === segs.length - 1 ? 5 : 0)}
+                        fill={COLOR[p]}
+                        opacity={hover !== null && hover !== i ? 0.45 : 1}
+                        className={s.bar}
+                      />
+                    );
+                  })}
+                  {i === best ? (
+                    <text x={x + bw / 2} y={y(totals[i]) - 8} textAnchor="middle" className={s.barLabel}>
+                      {compact(totals[i])}
+                    </text>
+                  ) : null}
+                  <text x={left + i * step + step / 2} y={h + 18} textAnchor="middle" className={s.axis}>
+                    {cap(monthName(m))}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        ) : null}
+        {hover !== null && months[hover] ? (
+          <div className={s.tip} style={{ left: Math.min(Math.max(left + hover * step + step / 2, 110), width - 110) }}>
+            <b>{cap(monthName(months[hover], true))}</b>
+            {visible.map((p) => (
+              <span key={p} className={s.tipRow}>
+                <i style={{ background: COLOR[p] }} /> {LABEL[p]} <em>{money(by(months[hover], p))}</em>
+              </span>
+            ))}
+            <span className={s.tipTotal}>
+              Total <em>{money(totals[hover])}</em>
+            </span>
+            {hover > 0 ? (
+              <span className={s.tipPrev}>
+                vs mes anterior <em><Delta value={change(totals[hover], totals[hover - 1])} /></em>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </Card>
+  );
+}
+
+// ----------------------------- Productos, países y clientes -----------------------------
+
+function Products({ data }: { data: Data }) {
+  const [all, setAll] = useState(false);
+  if (data.channel === 'amazon') {
+    return (
+      <Card title="Productos más vendidos">
+        <p className={s.muted}>El detalle por producto solo está disponible para Shopify.</p>
+      </Card>
+    );
+  }
+  const rows = all ? data.products : data.products.slice(0, 8);
+  const max = Math.max(...data.products.map((p) => p.netSales), 1);
+  const total = data.products.reduce((a, p) => a + p.netSales, 0) || 1;
+  return (
+    <Card title="Productos más vendidos" aside={<span className={s.muted}>Shopify · sin IVA</span>}>
+      <ol className={s.products}>
+        {rows.map((p, i) => (
+          <li key={p.product}>
+            <span className={s.rank}>{i + 1}</span>
+            <div className={s.productBody}>
+              <div className={s.productTop}>
+                <span className={s.productName} title={p.product}>
+                  {p.product.replace(/^V-Gummies \| /, '')}
+                </span>
+                <span className={s.productValue}>{money(p.netSales)}</span>
+              </div>
+              <div className={s.productBottom}>
+                <span className={s.productBar}>
+                  <i style={{ width: `${(p.netSales / max) * 100}%` }} />
+                </span>
+                <span className={s.productMeta}>
+                  {pct((p.netSales / total) * 100, 0)} · {int.format(p.units)} uds
+                  {data.hasPrevious ? (
+                    <>
+                      {' · '}
+                      {p.previousNetSales ? <Delta value={change(p.netSales, p.previousNetSales)} /> : <span className={s.deltaNone}>nuevo</span>}
+                    </>
+                  ) : null}
+                </span>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ol>
+      {data.products.length > 8 ? (
+        <button type="button" className={s.linkBtn} onClick={() => setAll((v) => !v)}>
+          {all ? 'Ver solo los 8 primeros' : `Ver los ${data.products.length} productos`}
+        </button>
+      ) : null}
+    </Card>
+  );
+}
+
+function Countries({ data }: { data: Data }) {
+  const total = data.countries.reduce((a, c) => a + c.orders, 0) || 1;
+  const max = Math.max(...data.countries.map((c) => c.orders), 1);
+  return (
+    <Card title="Pedidos por país">
+      <ul className={s.countries}>
+        {data.countries.map((c) => (
+          <li key={c.country}>
+            <span className={s.countryName}>{COUNTRY[c.country] ?? c.country}</span>
+            <span className={s.countryBar}>
+              <i style={{ width: `${(c.orders / max) * 100}%` }} />
+            </span>
+            <span className={s.countryValue}>{int.format(c.orders)}</span>
+            <span className={s.countryPct}>{pct((c.orders / total) * 100, c.orders / total < 0.01 ? 2 : 1)}</span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function Customers({ data }: { data: Data }) {
+  const c = data.customers.find((x) => x.platform === 'shopify');
+  if (!c || !c.customers) {
+    return (
+      <Card title="Clientes">
+        <p className={s.muted}>Amazon no comparte la identidad del comprador; los clientes se miden solo en Shopify.</p>
+      </Card>
+    );
+  }
+  const ret = (c.returningCustomers / c.customers) * 100;
+  return (
+    <Card title="Clientes de Shopify">
+      <p className={s.bigNumber}>{int.format(c.customers)}</p>
+      <p className={s.muted}>clientes distintos en el periodo</p>
+      <div className={s.split} aria-hidden>
+        <span style={{ width: `${100 - ret}%` }} className={s.splitNew} />
+        <span style={{ width: `${ret}%` }} className={s.splitRet} />
+      </div>
+      <dl className={s.facts}>
+        <div>
+          <dt><i className={s.dotNew} /> Nuevos</dt>
+          <dd>{int.format(c.customers - c.returningCustomers)} · {pct(100 - ret, 0)}</dd>
+        </div>
+        <div>
+          <dt><i className={s.dotRet} /> Recurrentes</dt>
+          <dd>{int.format(c.returningCustomers)} · {pct(ret, 0)}</dd>
+        </div>
+      </dl>
+      <p className={s.footnote}>Recurrente: ya había comprado antes del periodo. Sin datos personales.</p>
+    </Card>
+  );
+}
+
+// ----------------------------- Página -----------------------------
+
+export function PanelClient() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const preset = params.get('preset') || (params.get('start') ? 'custom' : 'mtd');
+  const compare = params.get('compare') === 'year' ? 'year' : 'previous';
+  const channel = params.get('channel') || 'all';
+  const [custom, setCustom] = useState({ start: params.get('start') || '', end: params.get('end') || '' });
+  const [showCustom, setShowCustom] = useState(preset === 'custom');
+  const [data, setData] = useState<Data | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const setParam = useCallback(
+    (patch: Record<string, string | null>) => {
+      const next = new URLSearchParams(params.toString());
+      for (const [k, v] of Object.entries(patch)) (v === null ? next.delete(k) : next.set(k, v));
+      router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+    },
+    [params, pathname, router]
+  );
+
+  const query = useMemo(() => {
+    const q = new URLSearchParams({ compare, channel });
+    if (preset === 'custom') {
+      if (params.get('start')) q.set('start', params.get('start')!);
+      if (params.get('end')) q.set('end', params.get('end')!);
+    } else q.set('preset', preset);
+    return q.toString();
+  }, [preset, compare, channel, params]);
+
+  useEffect(() => {
+    if (preset === 'custom' && !params.get('start')) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fetch(`/api/panel/v2?${query}`, { cache: 'no-store' })
+      .then(async (res) => {
+        if (res.status === 401 || res.status === 403) {
+          window.location.href = '/login';
+          return;
+        }
+        const json = await res.json();
+        if (!res.ok || !json.ok) throw new Error(json.error || 'No se pudieron cargar los datos.');
+        if (!cancelled) setData(json);
+      })
+      .catch((e: Error) => !cancelled && setError(e.message))
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [query, preset, params]);
+
+  const alerts = data?.alerts.filter((a) => a.level !== 'info') ?? [];
+  const fresh = data?.freshness.filter((f) => PLATFORMS.includes(f.platform)) ?? [];
+  const range = data
+    ? `${day(data.range.current.start, { day: 'numeric', month: 'long' })} – ${day(data.range.current.end, { day: 'numeric', month: 'long', year: 'numeric' })}`
+    : '';
+
+  const exportCsv = () => {
+    if (!data) return;
+    const rows = [
+      ['Día', ...PLATFORMS.flatMap((p) => [`${LABEL[p]} ventas netas`, `${LABEL[p]} pedidos`]), 'Total ventas netas', 'Total pedidos'],
+      ...data.daily.map((p) => [p.key, ...PLATFORMS.flatMap((pl) => [p.values[pl] ?? 0, p.orders[pl] ?? 0]), Math.round(sum(p.values) * 100) / 100, sum(p.orders)])
+    ];
+    const text = rows.map((r) => r.map((c) => (typeof c === 'number' ? String(c).replace('.', ',') : `"${c}"`)).join(';')).join('\n');
+    const url = URL.createObjectURL(new Blob([`﻿${text}`], { type: 'text/csv;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ventas-${data.range.current.start}_${data.range.current.end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className={s.page}>
+      <div className={s.root}>
+        <header className={s.header}>
+          <div className={s.brand}>
+            <span className={s.logo} aria-hidden>V</span>
+            <div>
+              <p className={s.eyebrow}>V-Gummies</p>
+              <h1 className={s.title}>Panel de negocio</h1>
+            </div>
+          </div>
+          <PanelTabs active="ventas" />
+          <nav className={s.links}>
+            <a href="/ventas">Detalle de ventas</a>
+            <a href="/">Inbox</a>
+          </nav>
+        </header>
+
+        <div className={s.toolbar} role="toolbar" aria-label="Filtros">
+          <div className={s.chips}>
+            {PRESETS.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={preset === p.id ? s.chipActive : s.chip}
+                aria-pressed={preset === p.id}
+                onClick={() => {
+                  setShowCustom(false);
+                  setParam({ preset: p.id, start: null, end: null });
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+            <button type="button" className={preset === 'custom' || showCustom ? s.chipActive : s.chip} aria-expanded={showCustom} onClick={() => setShowCustom((v) => !v)}>
+              Fechas…
+            </button>
+          </div>
+          <div className={s.toolbarRight}>
+            <label className={s.select}>
+              <span>Comparar con</span>
+              <select value={compare} onChange={(e) => setParam({ compare: e.target.value === 'year' ? 'year' : null })}>
+                <option value="previous">Periodo anterior</option>
+                <option value="year">Mismo periodo del año anterior</option>
+              </select>
+            </label>
+            <Segmented
+              label="Canal"
+              value={channel}
+              onChange={(v) => setParam({ channel: v === 'all' ? null : v })}
+              options={[
+                { id: 'all', label: 'Todos' },
+                ...PLATFORMS.map((p) => ({ id: p, label: <><i className={s.dot} style={{ background: COLOR[p] }} /> {LABEL[p]}</> }))
+              ]}
+            />
+            <button type="button" className={s.ghostBtn} onClick={exportCsv} disabled={!data}>
+              Descargar CSV
+            </button>
+          </div>
+          {showCustom ? (
+            <form
+              className={s.custom}
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (custom.start && custom.end) setParam({ preset: null, start: custom.start, end: custom.end });
+              }}
+            >
+              <label>
+                Desde <input type="date" value={custom.start} max={custom.end || undefined} onChange={(e) => setCustom((c) => ({ ...c, start: e.target.value }))} required />
+              </label>
+              <label>
+                Hasta <input type="date" value={custom.end} min={custom.start || undefined} onChange={(e) => setCustom((c) => ({ ...c, end: e.target.value }))} required />
+              </label>
+              <button type="submit" className={s.primaryBtn}>Aplicar</button>
+            </form>
+          ) : null}
+        </div>
+
+        <div className={s.context}>
+          {data ? (
+            <p>
+              <strong>{range}</strong>
+              <span className={s.muted}>
+                {data.hasPrevious
+                  ? ` · comparado ${data.compare.label.replace(/^vs /, 'con ')} (${day(data.compare.window.start)} – ${day(data.compare.window.end, { day: 'numeric', month: 'short', year: 'numeric' })})`
+                  : ' · sin datos para comparar'}
+              </span>
+            </p>
+          ) : (
+            <p />
+          )}
+          <p className={s.freshness}>
+            {loading ? (
+              <span className={s.loadingDot}>Actualizando…</span>
+            ) : (
+              fresh.map((f) => (
+                <span key={f.platform}>
+                  <i style={{ background: COLOR[f.platform] }} /> {LABEL[f.platform]} {ago(f.lastSyncRunAt)}
+                </span>
+              ))
+            )}
+          </p>
+        </div>
+
+        {error ? (
+          <div className={s.error} role="alert">
+            <strong>No se han podido cargar los datos.</strong> {error}
+          </div>
+        ) : null}
+        {!data && !error ? <div className={s.skeleton} aria-busy="true" /> : null}
+
+        {data ? (
+          <div className={loading ? s.dimmed : undefined} aria-busy={loading}>
+            {alerts.length ? (
+              <div className={s.alerts}>
+                {alerts.map((a) => (
+                  <p key={a.title} className={a.level === 'critical' ? s.alertCritical : s.alertWarning}>
+                    <strong>{a.title}.</strong> {a.detail}
+                  </p>
+                ))}
+              </div>
+            ) : null}
+
+            <Kpis data={data} />
+            <Insights items={data.insights} />
+
+            <div className={s.gridMain}>
+              <SalesChart data={data} />
+              <Forecast data={data} />
+            </div>
+
+            <Channels data={data} />
+
+            <Trend data={data} />
+
+            <div className={s.gridTwo}>
+              <ShopifyReport data={data} />
+              <Products data={data} />
+            </div>
+
+            <div className={s.gridTwo}>
+              <Countries data={data} />
+              <Customers data={data} />
+            </div>
+
+            <footer className={s.pageFoot}>
+              <p>
+                <strong>Fuentes.</strong> Shopify con el mismo criterio que su informe «Ventas por variante de producto» (sin IVA ni envíos, devoluciones el día del
+                reembolso). Amazon desde su API de pedidos: importe de los pedidos cobrados; los pendientes de cobro se suman cuando Amazon los confirma.
+                Fechas en hora de Madrid.
+              </p>
+              <a href="/panel/anterior">Ver versión anterior del panel</a>
+            </footer>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

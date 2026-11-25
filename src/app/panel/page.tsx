@@ -1,3 +1,4 @@
+import { Suspense } from 'react';
 import { requireUser } from '@/lib/auth';
 import { PanelClient } from './panel-client';
 
@@ -9,5 +10,9 @@ export const metadata = { title: 'Panel de negocio · V-Gummies' };
 // Para volver a exigirla: usar requireSalesAccess() de '@/lib/sales-auth'.
 export default async function PanelPage() {
   await requireUser();
-  return <PanelClient />;
+  return (
+    <Suspense>
+      <PanelClient />
+    </Suspense>
+  );
 }
