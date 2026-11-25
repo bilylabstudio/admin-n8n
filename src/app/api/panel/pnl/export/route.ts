@@ -45,6 +45,7 @@ export async function GET(request: Request) {
 
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Panel de negocio V-Gummies';
+  wb.calcProperties.fullCalcOnLoad = true;
   const period = month
     ? new Date(`${month}-01T12:00:00Z`).toLocaleDateString('es-ES', { month: 'long', year: 'numeric', timeZone: 'UTC' }).toUpperCase()
     : `${year}${String(year) === today.slice(0, 4) ? ` (hasta ${today.slice(8, 10)}/${today.slice(5, 7)})` : ''}`;
@@ -107,6 +108,7 @@ export async function GET(request: Request) {
       }
     }
     const v = (rule: PnlRule) => rule.value;
+    const f = (n: number) => String(Number(n.toFixed(8)));
     for (const rule of pRules) {
       const rr = rowOf[rule.key];
       const line = res.lines.find((l) => l.key === rule.key);
@@ -118,11 +120,11 @@ export async function GET(request: Request) {
         : `${rule.label} ${v(rule).toLocaleString('es-ES')}% de publicidad`;
       set(rr, A, label);
       const formula =
-        rule.kind === 'pct_revenue' ? `${B}6*${v(rule) / 100}`
+        rule.kind === 'pct_revenue' ? `${B}6*${f(v(rule) / 100)}`
         : rule.kind === 'per_unit' ? `${B}3*${v(rule)}`
         : rule.kind === 'per_order' ? `${B}4*${v(rule)}`
         : rule.kind === 'fixed_month' ? `${v(rule)}*${Math.round(fraction * 10000) / 10000}`
-        : adsRows.length ? `(${adsRows.map((x) => `${B}${x}`).join('+')})*${v(rule) / 100}` : '0';
+        : adsRows.length ? `(${adsRows.map((x) => `${B}${x}`).join('+')})*${f(v(rule) / 100)}` : '0';
       set(rr, B, { formula, result: line?.estimated ?? 0 }, EUR);
       set(rr, C, { formula: `IF(${B}$6=0,0,${B}${rr}/${B}$6)` }, PCT);
       if (line && line.actual !== null) {
