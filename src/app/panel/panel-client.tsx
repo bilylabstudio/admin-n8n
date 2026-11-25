@@ -33,7 +33,7 @@ type Report = {
 type Alert = { level: 'critical' | 'warning' | 'info'; platform: string | null; title: string; detail: string };
 type Data = {
   ok: true;
-  range: { preset: string; current: { start: string; end: string }; today: string };
+  range: { preset: string; current: { start: string; end: string }; previous: { start: string; end: string }; compareLabel: string; today: string };
   compare: { mode: 'previous' | 'year'; window: { start: string; end: string }; label: string };
   channel: string;
   hasPrevious: boolean;
@@ -111,6 +111,22 @@ const bucket = (k: string, g: 'day' | 'week' | 'month', long = false) =>
         ? day(k, { weekday: 'long', day: 'numeric', month: 'long' })
         : day(k);
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+/** "1–25 oct", "1–25 nov 2025", "1 ene – 25 nov" (año solo si no es el actual). */
+function fmtRange(w: { start: string; end: string }, today: string) {
+  const y = (d: string) => (d.slice(0, 4) !== today.slice(0, 4) ? ` ${d.slice(0, 4)}` : '');
+  const dd = (d: string) => String(Number(d.slice(8, 10)));
+  const mm = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('es-ES', { month: 'short', timeZone: 'UTC' }).replace('.', '');
+  if (w.start.slice(0, 7) === w.end.slice(0, 7)) {
+    return w.start === w.end ? `${dd(w.start)} ${mm(w.start)}${y(w.start)}` : `${dd(w.start)}–${dd(w.end)} ${mm(w.end)}${y(w.end)}`;
+  }
+  return `${dd(w.start)} ${mm(w.start)}${w.start.slice(0, 4) !== w.end.slice(0, 4) ? y(w.start) : ''} – ${dd(w.end)} ${mm(w.end)}${y(w.end)}`;
+}
+function shiftYearDay(d: string) {
+  const y = Number(d.slice(0, 4)) - 1;
+  const m = d.slice(5, 7);
+  const max = new Date(Date.UTC(y, Number(m), 0)).getUTCDate();
+  return `${y}-${m}-${String(Math.min(Number(d.slice(8, 10)), max)).padStart(2, '0')}`;
+}
 const sum = (o: Record<string, number>) => Object.values(o).reduce((a, b) => a + b, 0);
 const change = (cur: number, prev: number) => (prev ? ((cur - prev) / Math.abs(prev)) * 100 : null);
 const ago = (iso: string | null) => {
@@ -229,7 +245,8 @@ function Kpis({ data }: { data: Data }) {
   const k = data.kpis;
   const p = data.previous;
   const cmp = data.compare.label;
-  const prev = (v: string) => (data.hasPrevious ? <span className={s.kpiPrev}>antes {v}</span> : null);
+  const cw = fmtRange(data.compare.window, data.range.today);
+  const prev = (v: string) => (data.hasPrevious ? <span className={s.kpiPrev}>{cw}: {v}</span> : null);
   return (
     <section className={s.kpis} aria-label="Indicadores principales">
       <div className={`${s.kpi} ${s.kpiMain}`}>
@@ -443,7 +460,7 @@ function SalesChart({ data }: { data: Data }) {
         ))}
         {withPrev ? (
           <li>
-            <i className={s.legDash} /> {cap(data.compare.label.replace(/^vs /, ''))}
+            <i className={s.legDash} /> Comparación: {fmtRange(data.compare.window, data.range.today)}
           </li>
         ) : null}
       </ul>
@@ -541,7 +558,7 @@ function Channels({ data }: { data: Data }) {
               <p className={s.channelValue}>{money(c.kpis.netSales)}</p>
               <p className={s.channelDelta}>
                 {data.hasPrevious ? <Delta value={c.delta} label={data.compare.label} /> : null}
-                {data.hasPrevious ? <span className={s.kpiPrev}>antes {money(c.previous.netSales)}</span> : null}
+                {data.hasPrevious ? <span className={s.kpiPrev}>{fmtRange(data.compare.window, data.range.today)}: {money(c.previous.netSales)}</span> : null}
               </p>
             </div>
             <Spark values={dailyBy(c.platform)} color={COLOR[c.platform]} height={32} />
@@ -932,8 +949,16 @@ export function PanelClient() {
             <label className={s.select}>
               <span>Comparar con</span>
               <select value={compare} onChange={(e) => setParam({ compare: e.target.value === 'year' ? 'year' : null })}>
-                <option value="previous">Periodo anterior</option>
-                <option value="year">Mismo periodo del año anterior</option>
+                <option value="previous">
+                  {data
+                    ? `${data.range.preset === 'ytd' ? 'Año anterior' : cap(data.range.compareLabel.replace(/^vs /, ''))} · ${fmtRange(data.range.previous, data.range.today)}`
+                    : 'Periodo anterior'}
+                </option>
+                <option value="year">
+                  {data
+                    ? `Mismas fechas del año anterior · ${fmtRange({ start: shiftYearDay(data.range.current.start), end: shiftYearDay(data.range.current.end) }, data.range.today)}`
+                    : 'Mismas fechas del año anterior'}
+                </option>
               </select>
             </label>
             <Segmented
@@ -974,8 +999,8 @@ export function PanelClient() {
               <strong>{range}</strong>
               <span className={s.muted}>
                 {data.hasPrevious
-                  ? ` · comparado ${data.compare.label.replace(/^vs /, 'con ')} (${day(data.compare.window.start)} – ${day(data.compare.window.end, { day: 'numeric', month: 'short', year: 'numeric' })})`
-                  : ' · sin datos para comparar'}
+                  ? ` · comparando con ${fmtRange(data.compare.window, data.range.today)} (${data.compare.mode === 'year' ? 'mismas fechas del año anterior' : data.compare.label.replace(/^vs /, '')})`
+                  : ` · sin datos para comparar con ${fmtRange(data.compare.window, data.range.today)}${data.compare.mode === 'year' ? ' (aún no hay datos del año anterior)' : ''}`}
               </span>
             </p>
           ) : (
