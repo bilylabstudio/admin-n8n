@@ -1313,3 +1313,341 @@
   font-size: 13px;
   font-weight: 600;
 }
+
+/* ===== Compactación 25-nov: más datos por pantalla, menos scroll ===== */
+.root {
+  padding: 18px 24px 48px;
+}
+.header {
+  margin-bottom: 12px;
+}
+.logo {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  font-size: 17px;
+}
+.title {
+  font-size: 19px;
+}
+.tab,
+.tabActive {
+  padding: 6px 18px;
+  font-size: 13px;
+}
+.toolbar {
+  margin: 0 -24px;
+  padding: 8px 24px;
+}
+.chip,
+.chipActive {
+  padding: 5px 12px;
+  font-size: 12.5px;
+}
+.select select,
+.ghostBtn {
+  padding: 5px 10px;
+  font-size: 12.5px;
+}
+.segmented button {
+  padding: 4px 10px;
+  font-size: 12.5px;
+}
+.context {
+  margin: 8px 0 10px;
+  font-size: 13px;
+}
+.alerts {
+  margin-bottom: 10px;
+}
+.alertWarning,
+.alertCritical {
+  padding: 7px 12px;
+  font-size: 12.5px;
+}
+.card {
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+.cardHead {
+  margin-bottom: 8px;
+}
+.cardHead h2,
+.card > h2 {
+  font-size: 14.5px;
+}
+.gridMain,
+.gridTwo,
+.gridThree {
+  gap: 12px;
+  margin-top: 12px;
+}
+.gridMain {
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+}
+.gridThree {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+/* KPIs: siempre una fila */
+.kpis {
+  grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.kpi {
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+.kpiLabel {
+  font-size: 12px;
+}
+.kpiValue {
+  font-size: 21px;
+}
+.kpiMainValue {
+  font-size: 27px;
+}
+.kpiLine {
+  font-size: 12px;
+}
+.kpiPrev {
+  font-size: 11.5px;
+}
+.kpiHint {
+  font-size: 11.5px;
+}
+.spark {
+  height: 30px;
+  margin-top: 4px;
+}
+.kpiFacts {
+  gap: 2px;
+  padding-top: 6px;
+}
+.kpiFacts div {
+  font-size: 11.5px;
+}
+.deltaUp,
+.deltaDown,
+.deltaFlat,
+.deltaNone {
+  font-size: 11.5px;
+}
+.deltaUp,
+.deltaDown,
+.deltaFlat {
+  padding: 1px 6px;
+}
+
+/* Insights: compactos, una línea */
+.insights {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+.insights li {
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.insDot {
+  width: 16px;
+  height: 16px;
+  font-size: 10px;
+}
+
+.chartSummary {
+  margin: -2px 0 6px;
+  font-size: 12px;
+}
+.legend {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+/* Previsión */
+.forecastValue {
+  font-size: 26px;
+}
+.forecastSub {
+  margin: 4px 0 10px;
+  font-size: 12px;
+}
+.progress {
+  height: 6px;
+}
+.progressText {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.pulse {
+  margin-top: 8px;
+}
+.facts {
+  gap: 4px;
+  margin-top: 8px;
+}
+.facts dt,
+.facts dd {
+  font-size: 12px;
+}
+.legendSmall {
+  margin-top: 6px;
+  font-size: 11.5px;
+}
+
+/* Canales (en la fila de 3 con clientes) */
+.channel {
+  padding: 14px 16px;
+  border-radius: 14px;
+}
+.channelName {
+  font-size: 14.5px;
+}
+.channelMain {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+  margin-top: 4px;
+}
+.channelValue {
+  font-size: 23px;
+}
+.channelDelta {
+  margin-top: 2px;
+}
+.shareTrack {
+  margin: 8px 0 2px;
+  height: 5px;
+}
+.channelFacts {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  margin-top: 8px;
+}
+.channelFacts dt {
+  font-size: 11.5px;
+}
+.channelFacts dd {
+  font-size: 13px;
+}
+.source {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+/* Informe, productos, países, clientes */
+.reportRow {
+  grid-template-columns: 110px minmax(40px, 1fr) auto 70px;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 13px;
+}
+.footnote {
+  margin-top: 8px;
+  font-size: 11.5px;
+}
+.products {
+  gap: 7px;
+}
+.products li {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+}
+.rank {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.productName,
+.productValue {
+  font-size: 13px;
+}
+.productBar,
+.productMeta {
+  margin-top: 3px;
+}
+.productMeta {
+  font-size: 11.5px;
+}
+.linkBtn {
+  margin-top: 8px;
+  font-size: 12.5px;
+}
+.countries {
+  gap: 6px;
+}
+.countries li {
+  grid-template-columns: 96px minmax(0, 1fr) 52px 52px;
+  gap: 8px;
+  font-size: 13px;
+}
+.bigNumber {
+  font-size: 26px;
+}
+.split {
+  height: 8px;
+  margin-top: 10px;
+}
+.pageFoot {
+  margin-top: 18px;
+  font-size: 11.5px;
+}
+.skeleton {
+  height: 320px;
+}
+
+/* Responsive compacto: se mantiene la densidad hasta pantallas pequeñas */
+@media (max-width: 1200px) {
+  .kpis {
+    grid-template-columns: minmax(0, 1.35fr) repeat(4, minmax(0, 1fr));
+  }
+  .kpiMain {
+    grid-column: auto;
+  }
+}
+@media (max-width: 1024px) {
+  .gridMain {
+    grid-template-columns: minmax(0, 1.7fr) minmax(220px, 1fr);
+  }
+  .gridTwo {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gridThree {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 740px) {
+  .kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .kpiMain {
+    grid-column: span 1;
+  }
+}
+@media (max-width: 860px) {
+  .gridMain,
+  .gridTwo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .gridThree {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .gridThree > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 560px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .kpiMain {
+    grid-column: 1 / -1;
+  }
+  .gridThree {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

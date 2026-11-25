@@ -181,7 +181,7 @@ function Spark({ values, color = 'currentColor', height = 36 }: { values: number
   const pts = values.map((v, i) => [(i / (values.length - 1)) * w, h - 3 - ((v - min) / (max - min || 1)) * (h - 6)]);
   const line = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
   return (
-    <svg className={s.spark} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden style={{ color }}>
+    <svg className={s.spark} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden style={{ color, height: h }}>
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">
           <stop offset="0" stopColor="currentColor" stopOpacity="0.18" />
@@ -239,7 +239,7 @@ function Kpis({ data }: { data: Data }) {
           {data.hasPrevious ? <Delta value={data.deltas.netSales} label={cmp} /> : <span className={s.deltaNone}>sin comparación</span>}
           {prev(money(p.netSales))}
         </span>
-        <Spark values={dNet} color="#2c8a8f" height={56} />
+        <Spark values={dNet} color="#2c8a8f" height={30} />
         <span className={s.kpiHint}>
           Sin IVA, tras descuentos y devoluciones · {money(k.grossSales)} con IVA
         </span>
@@ -251,7 +251,7 @@ function Kpis({ data }: { data: Data }) {
           <Delta value={data.hasPrevious ? data.deltas.orders : null} label={cmp} />
           {prev(int.format(p.orders))}
         </span>
-        <Spark values={dOrders} color="#334fb4" />
+        <Spark values={dOrders} color="#334fb4" height={30} />
       </div>
       <div className={s.kpi}>
         <span className={s.kpiLabel}>Unidades</span>
@@ -272,7 +272,7 @@ function Kpis({ data }: { data: Data }) {
           <Delta value={data.hasPrevious ? data.deltas.aov : null} label={cmp} />
           {prev(eur2.format(p.aov))}
         </span>
-        <Spark values={dAov} color="#6b6680" />
+        <Spark values={dAov} color="#6b6680" height={30} />
       </div>
       <div className={s.kpi}>
         <span className={s.kpiLabel}>Devoluciones</span>
@@ -318,9 +318,9 @@ function SalesChart({ data }: { data: Data }) {
   const val = (p: Point, pl: string) => (metric === 'net' ? p.values[pl] ?? 0 : p.orders[pl] ?? 0);
   const tot = (p: Point | undefined) => (p ? visible.reduce((a, pl) => a + val(p, pl), 0) : 0);
   const withPrev = showPrev && data.hasPrevious;
-  const h = 300;
-  const left = 52;
-  const bottom = 28;
+  const h = 230;
+  const left = 48;
+  const bottom = 24;
   const plotW = Math.max(0, width - left);
   const max = niceMax(Math.max(...points.map(tot), ...(withPrev ? previous.slice(0, points.length).map(tot) : []), 1));
   const step = points.length ? plotW / points.length : 0;
@@ -470,7 +470,7 @@ function Forecast({ data }: { data: Data }) {
       </Card>
     );
   }
-  const h = 96;
+  const h = 64;
   const days = Math.max(pulse.daysInMonth, pulse.previous.length);
   const last = pulse.current.at(-1) ?? 0;
   const max = Math.max(f.projectedNet, ...pulse.previous, last, 1) * 1.05;
@@ -527,7 +527,7 @@ function Forecast({ data }: { data: Data }) {
 function Channels({ data }: { data: Data }) {
   const dailyBy = (pl: string) => data.daily.map((p) => p.values[pl] ?? 0);
   return (
-    <div className={s.channels}>
+    <>
       {data.channels.map((c) => (
         <article key={c.platform} className={`${s.channel} ${c.selected ? '' : s.channelDim}`}>
           <header className={s.channelHead}>
@@ -544,7 +544,7 @@ function Channels({ data }: { data: Data }) {
                 {data.hasPrevious ? <span className={s.kpiPrev}>antes {money(c.previous.netSales)}</span> : null}
               </p>
             </div>
-            <Spark values={dailyBy(c.platform)} color={COLOR[c.platform]} height={44} />
+            <Spark values={dailyBy(c.platform)} color={COLOR[c.platform]} height={32} />
           </div>
           <div className={s.shareTrack}>
             <span style={{ width: `${c.share}%`, background: COLOR[c.platform] }} />
@@ -562,7 +562,7 @@ function Channels({ data }: { data: Data }) {
           </p>
         </article>
       ))}
-    </div>
+    </>
   );
 }
 
@@ -617,8 +617,8 @@ function Trend({ data }: { data: Data }) {
   const by = (m: string, p: string) => data.trend.find((t) => t.month === m && t.platform === p)?.net ?? 0;
   const visible = PLATFORMS.filter((p) => data.channel === 'all' || data.channel === p);
   const totals = months.map((m) => visible.reduce((a, p) => a + by(m, p), 0));
-  const h = 220;
-  const left = 52;
+  const h = 160;
+  const left = 48;
   const max = niceMax(Math.max(...totals, 1));
   const step = months.length ? (width - left) / months.length : 0;
   const bw = Math.min(38, step * 0.6);
@@ -705,7 +705,7 @@ function Products({ data }: { data: Data }) {
       </Card>
     );
   }
-  const rows = all ? data.products : data.products.slice(0, 8);
+  const rows = all ? data.products : data.products.slice(0, 6);
   const max = Math.max(...data.products.map((p) => p.netSales), 1);
   const total = data.products.reduce((a, p) => a + p.netSales, 0) || 1;
   return (
@@ -739,9 +739,9 @@ function Products({ data }: { data: Data }) {
           </li>
         ))}
       </ol>
-      {data.products.length > 8 ? (
+      {data.products.length > 6 ? (
         <button type="button" className={s.linkBtn} onClick={() => setAll((v) => !v)}>
-          {all ? 'Ver solo los 8 primeros' : `Ver los ${data.products.length} productos`}
+          {all ? 'Ver solo los 6 primeros' : `Ver los ${data.products.length} productos`}
         </button>
       ) : null}
     </Card>
@@ -754,7 +754,7 @@ function Countries({ data }: { data: Data }) {
   return (
     <Card title="Pedidos por país">
       <ul className={s.countries}>
-        {data.countries.map((c) => (
+        {data.countries.slice(0, 7).map((c) => (
           <li key={c.country}>
             <span className={s.countryName}>{COUNTRY[c.country] ?? c.country}</span>
             <span className={s.countryBar}>
@@ -1025,18 +1025,19 @@ export function PanelClient() {
               <Forecast data={data} />
             </div>
 
-            <Channels data={data} />
+            <div className={s.gridThree}>
+              <Channels data={data} />
+              <Customers data={data} />
+            </div>
 
-            <Trend data={data} />
+            <div className={s.gridMain}>
+              <Trend data={data} />
+              <Countries data={data} />
+            </div>
 
             <div className={s.gridTwo}>
               <ShopifyReport data={data} />
               <Products data={data} />
-            </div>
-
-            <div className={s.gridTwo}>
-              <Countries data={data} />
-              <Customers data={data} />
             </div>
 
             <footer className={s.pageFoot}>
