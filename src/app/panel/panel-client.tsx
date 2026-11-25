@@ -681,7 +681,9 @@ function Trend({ data }: { data: Data }) {
                     </text>
                   ) : null}
                   <text x={left + i * step + step / 2} y={h + 18} textAnchor="middle" className={s.axis}>
-                    {cap(monthName(m))}
+                    {step < 52
+                      ? cap(new Date(`${m}-01T12:00:00Z`).toLocaleDateString('es-ES', { month: 'short', timeZone: 'UTC' }).replace('.', ''))
+                      : cap(monthName(m))}
                   </text>
                 </g>
               );
